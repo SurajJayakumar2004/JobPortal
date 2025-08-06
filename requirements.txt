@@ -1,0 +1,19 @@
+fastapi
+uvicorn[standard]
+pydantic[email]
+pydantic-settings
+passlib[bcrypt]
+python-jose[cryptography]
+python-multipart
+python-dotenv
+sqlalchemy
+psycopg2-binary
+alembic
+# AI/ML libraries for future phases
+scikit-learn
+nltk
+spacy
+# File handling
+python-magic
+# Email validation
+email-validator

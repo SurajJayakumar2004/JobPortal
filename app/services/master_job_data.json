@@ -1,0 +1,247 @@
+[
+  {
+    "jobTitle": "Junior Python Developer",
+    "industry": "Technology",
+    "skillKeywords": [
+      "Python",
+      "Basic Algorithms and Data Structures",
+      "Version Control (Git/GitHub)",
+      "Debugging",
+      "REST APIs",
+      "Unit Testing",
+      "SQL",
+      "Problem Solving",
+      "Communication",
+      "Basic Object-Oriented Programming",
+      "HTML/CSS (basic)",
+      "Code Documentation"
+    ],
+    "requiredCertifications": [
+      "Python Institute PCEP – Certified Entry-Level Python Programmer",
+      "Microsoft Certified: Azure Fundamentals",
+      "AWS Certified Cloud Practitioner"
+    ]
+  },
+  {
+    "jobTitle": "UX/UI Designer",
+    "industry": "Technology",
+    "skillKeywords": [
+      "User Research",
+      "Wireframing",
+      "Prototyping",
+      "Visual Design",
+      "Interaction Design",
+      "User Testing",
+      "Design Thinking",
+      "Figma",
+      "Adobe XD",
+      "Sketch",
+      "Typography",
+      "Color Theory",
+      "Communication",
+      "Collaboration",
+      "Information Architecture",
+      "Responsive Design"
+    ],
+    "requiredCertifications": [
+      "NN/g UX Certification",
+      "Certified Usability Analyst (CUA)",
+      "Adobe Certified Expert (ACE)"
+    ]
+  },
+  {
+    "jobTitle": "Product Manager",
+    "industry": "Technology",
+    "skillKeywords": [
+      "Product Lifecycle Management",
+      "Roadmapping",
+      "Agile Methodology",
+      "Scrum",
+      "User Story Writing",
+      "Market Research",
+      "Stakeholder Management",
+      "Requirements Gathering",
+      "Business Analysis",
+      "Data-Driven Decision Making",
+      "Prioritization",
+      "Communication",
+      "Leadership",
+      "Problem Solving",
+      "Wireframing (basic)"
+    ],
+    "requiredCertifications": [
+      "Certified Scrum Product Owner (CSPO)",
+      "Pragmatic Institute Certified",
+      "Project Management Professional (PMP)"
+    ]
+  },
+  {
+    "jobTitle": "Senior DevOps Engineer",
+    "industry": "Technology",
+    "skillKeywords": [
+      "CI/CD Pipelines",
+      "Infrastructure as Code (IaC)",
+      "Kubernetes",
+      "Docker",
+      "AWS / Azure / Google Cloud",
+      "Ansible",
+      "Terraform",
+      "Linux Administration",
+      "Scripting (Python, Bash)",
+      "Monitoring and Logging",
+      "Networking",
+      "Security Best Practices",
+      "Automation",
+      "Problem Solving",
+      "Collaboration"
+    ],
+    "requiredCertifications": [
+      "AWS Certified DevOps Engineer – Professional",
+      "Certified Kubernetes Administrator (CKA)",
+      "Microsoft Certified: Azure DevOps Engineer Expert",
+      "HashiCorp Certified: Terraform Associate"
+    ]
+  },
+  {
+    "jobTitle": "Digital Marketing Specialist",
+    "industry": "Marketing",
+    "skillKeywords": [
+      "SEO",
+      "SEM",
+      "Content Marketing",
+      "Social Media Marketing",
+      "Google Analytics",
+      "Google Ads",
+      "Email Marketing",
+      "Conversion Rate Optimization",
+      "Copywriting",
+      "Data Analysis",
+      "Campaign Management",
+      "Communication",
+      "Creativity",
+      "A/B Testing",
+      "Marketing Automation"
+    ],
+    "requiredCertifications": [
+      "Google Ads Certification",
+      "Google Analytics Individual Qualification (GAIQ)",
+      "HubSpot Content Marketing Certification",
+      "Facebook Blueprint Certification"
+    ]
+  },
+  {
+    "jobTitle": "Data Scientist",
+    "industry": "Technology",
+    "skillKeywords": [
+      "Python",
+      "R",
+      "SQL",
+      "Machine Learning",
+      "Deep Learning",
+      "Statistics",
+      "Data Visualization",
+      "Tableau",
+      "Pandas",
+      "NumPy",
+      "Scikit-learn",
+      "TensorFlow",
+      "Big Data",
+      "Problem Solving",
+      "Communication"
+    ],
+    "requiredCertifications": [
+      "Certified Analytics Professional (CAP)",
+      "TensorFlow Developer Certificate",
+      "Microsoft Certified: Azure Data Scientist Associate"
+    ]
+  },
+  {
+    "jobTitle": "Registered Nurse",
+    "industry": "Healthcare",
+    "skillKeywords": [
+      "Patient Care",
+      "Medical Records Management",
+      "Electronic Health Records (EHR)",
+      "Patient Assessment",
+      "Medication Administration",
+      "IV Therapy",
+      "Wound Care",
+      "Critical Thinking",
+      "Compassion",
+      "Teamwork"
+    ],
+    "requiredCertifications": [
+      "NCLEX-RN",
+      "Basic Life Support (BLS)",
+      "Advanced Cardiovascular Life Support (ACLS)"
+    ]
+  },
+  {
+    "jobTitle": "Data Engineer",
+    "industry": "Technology",
+    "skillKeywords": [
+      "Python",
+      "Java",
+      "SQL",
+      "ETL Processes",
+      "Big Data (Hadoop, Spark)",
+      "Data Pipeline Development",
+      "Cloud Platforms (AWS, GCP, Azure)",
+      "Data Warehousing",
+      "NoSQL Databases",
+      "Scripting",
+      "Automation",
+      "Problem Solving"
+    ],
+    "requiredCertifications": [
+      "Google Professional Data Engineer",
+      "AWS Certified Big Data – Specialty",
+      "Microsoft Certified: Azure Data Engineer Associate"
+    ]
+  },
+  {
+    "jobTitle": "Cybersecurity Analyst",
+    "industry": "Technology",
+    "skillKeywords": [
+      "Network Security",
+      "Threat Analysis",
+      "SIEM Tools",
+      "Incident Response",
+      "Risk Assessment",
+      "Firewalls",
+      "Encryption",
+      "Penetration Testing",
+      "Compliance Standards",
+      "Security Monitoring",
+      "Communication"
+    ],
+    "requiredCertifications": [
+      "Certified Information Systems Security Professional (CISSP)",
+      "Certified Ethical Hacker (CEH)",
+      "CompTIA Security+"
+    ]
+  },
+  {
+    "jobTitle": "Cloud Architect",
+    "industry": "Technology",
+    "skillKeywords": [
+      "Cloud Infrastructure Design",
+      "AWS",
+      "Azure",
+      "Google Cloud Platform",
+      "Networking",
+      "Security Architecture",
+      "Cost Optimization",
+      "DevOps Practices",
+      "Automation",
+      "Scripting",
+      "Communication",
+      "Problem Solving"
+    ],
+    "requiredCertifications": [
+      "AWS Certified Solutions Architect – Professional",
+      "Microsoft Certified: Azure Solutions Architect Expert",
+      "Google Professional Cloud Architect"
+    ]
+  }
+]
