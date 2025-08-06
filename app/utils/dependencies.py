@@ -1,28 +1,34 @@
-from typing import Optional, Dict, Any
+"""
+FastAPI dependencies for authentication and common functionality.
+
+This module provides dependency functions that can be injected into
+FastAPI endpoints for authentication, database access, and other
+common operations.
+"""
+
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from app.utils.security import verify_token
-from app.services.auth_service import AuthService
-from app.schemas import UserRole
+from typing import Optional
 
-# OAuth2 scheme for token authentication
+from app.schemas import User, UserRole, TokenData
+from app.utils.security import verify_token
+
+# Security scheme for Bearer token authentication
 security = HTTPBearer()
 
 
-async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Depends(security)
-) -> Dict[str, Any]:
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> TokenData:
     """
-    Dependency to get current authenticated user from JWT token
+    Dependency to get the current authenticated user from JWT token.
     
     Args:
-        credentials: HTTP Bearer token credentials
+        credentials: HTTP authorization credentials
         
     Returns:
-        dict: Current user data
+        TokenData: The current user's token data
         
     Raises:
-        HTTPException: If token is invalid or user not found
+        HTTPException: If authentication fails
     """
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -30,181 +36,87 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    try:
-        # Verify the token
-        payload = verify_token(credentials.credentials)
-        if payload is None:
-            raise credentials_exception
-        
-        # Extract email from token
-        email: str = payload.get("sub")
-        if email is None:
-            raise credentials_exception
-        
-        # Get user from database
-        user = AuthService.get_user_by_email(email)
-        if user is None:
-            raise credentials_exception
-        
-        # Check if user is active
-        if not user.get("is_active", False):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Inactive user"
-            )
-        
-        return user
-        
-    except Exception as e:
-        raise credentials_exception
+    return verify_token(credentials.credentials, credentials_exception)
 
 
-async def get_current_active_user(
-    current_user: Dict[str, Any] = Depends(get_current_user)
-) -> Dict[str, Any]:
+async def get_current_active_user(current_user: TokenData = Depends(get_current_user)) -> TokenData:
     """
-    Dependency to get current active user
+    Dependency to get the current active user.
     
     Args:
         current_user: Current user from get_current_user dependency
         
     Returns:
-        dict: Current active user data
+        TokenData: The current active user's token data
         
     Raises:
         HTTPException: If user is inactive
     """
-    if not current_user.get("is_active", False):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Inactive user"
-        )
+    # In a real implementation, you would check user status from database
+    # For now, we assume all users are active
     return current_user
 
 
-async def get_current_employer(
-    current_user: Dict[str, Any] = Depends(get_current_active_user)
-) -> Dict[str, Any]:
+def require_role(required_role: UserRole):
     """
-    Dependency to get current user if they are an employer
+    Create a dependency that requires a specific user role.
     
     Args:
-        current_user: Current user from get_current_active_user dependency
+        required_role: The role required to access the endpoint
         
     Returns:
-        dict: Current employer user data
-        
-    Raises:
-        HTTPException: If user is not an employer
+        Dependency function that checks user role
     """
-    if current_user.get("role") != UserRole.EMPLOYER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions. Employer role required."
-        )
-    return current_user
+    async def role_checker(current_user: TokenData = Depends(get_current_active_user)) -> TokenData:
+        if current_user.role != required_role:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Access denied. Required role: {required_role}"
+            )
+        return current_user
+    
+    return role_checker
 
 
-async def get_current_job_seeker(
-    current_user: Dict[str, Any] = Depends(get_current_active_user)
-) -> Dict[str, Any]:
+def require_employer():
     """
-    Dependency to get current user if they are a job seeker
+    Dependency that requires employer role.
+    
+    Returns:
+        TokenData: Current user if they have employer role
+    """
+    return require_role(UserRole.EMPLOYER)
+
+
+def require_student():
+    """
+    Dependency that requires student role.
+    
+    Returns:
+        TokenData: Current user if they have student role
+    """
+    return require_role(UserRole.STUDENT)
+
+
+async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Optional[TokenData]:
+    """
+    Dependency to optionally get the current user (for public endpoints that can benefit from user context).
     
     Args:
-        current_user: Current user from get_current_active_user dependency
+        credentials: Optional HTTP authorization credentials
         
     Returns:
-        dict: Current job seeker user data
-        
-    Raises:
-        HTTPException: If user is not a job seeker
-    """
-    if current_user.get("role") != UserRole.JOB_SEEKER:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions. Job seeker role required."
-        )
-    return current_user
-
-
-async def get_current_counselor(
-    current_user: Dict[str, Any] = Depends(get_current_active_user)
-) -> Dict[str, Any]:
-    """
-    Dependency to get current user if they are a counselor
-    
-    Args:
-        current_user: Current user from get_current_active_user dependency
-        
-    Returns:
-        dict: Current counselor user data
-        
-    Raises:
-        HTTPException: If user is not a counselor
-    """
-    if current_user.get("role") != UserRole.COUNSELOR:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions. Counselor role required."
-        )
-    return current_user
-
-
-async def get_admin_user(
-    current_user: Dict[str, Any] = Depends(get_current_active_user)
-) -> Dict[str, Any]:
-    """
-    Dependency to get current user if they have admin privileges
-    (For now, admin is any employer - can be refined later)
-    
-    Args:
-        current_user: Current user from get_current_active_user dependency
-        
-    Returns:
-        dict: Current admin user data
-        
-    Raises:
-        HTTPException: If user doesn't have admin privileges
-    """
-    if current_user.get("role") not in [UserRole.EMPLOYER, UserRole.COUNSELOR]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions. Admin privileges required."
-        )
-    return current_user
-
-
-# Optional dependencies (don't raise exceptions if user is not authenticated)
-async def get_current_user_optional(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> Optional[Dict[str, Any]]:
-    """
-    Optional dependency to get current user (doesn't raise exception if not authenticated)
-    
-    Args:
-        credentials: HTTP Bearer token credentials (optional)
-        
-    Returns:
-        dict or None: Current user data if authenticated, None otherwise
+        Optional[TokenData]: The current user's token data or None
     """
     if not credentials:
         return None
     
     try:
-        payload = verify_token(credentials.credentials)
-        if payload is None:
-            return None
-        
-        email: str = payload.get("sub")
-        if email is None:
-            return None
-        
-        user = AuthService.get_user_by_email(email)
-        if user is None or not user.get("is_active", False):
-            return None
-        
-        return user
-        
-    except Exception:
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        return verify_token(credentials.credentials, credentials_exception)
+    except HTTPException:
         return None

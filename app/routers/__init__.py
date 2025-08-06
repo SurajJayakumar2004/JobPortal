@@ -1,1 +1,1 @@
-# Router package initialization
+"""Routers package for FastAPI endpoints."""

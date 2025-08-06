@@ -1,643 +1,613 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+"""
+Job posting and management router.
+
+This module handles all job-related endpoints including job creation,
+listing, updates, and AI-powered candidate matching for employers.
+"""
+
+from fastapi import APIRouter, HTTPException, status, Depends, Query
 from typing import Dict, Any, List, Optional
+import uuid
+from datetime import datetime
 import logging
 
-from app.schemas import JobCreate, JobResponse, JobUpdate, APIResponse, UserRole, ApplicationCreate
-from app.services.job_service import JobService
-from app.services.application_service import ApplicationService
-from app.config import app_data
+from app.schemas import (
+    JobCreate, JobUpdate, JobOut, Job, JobStatus, 
+    CandidateMatch, JobMatchResponse, SuccessResponse,
+    UserRole, Application, Resume, User
+)
+from app.services.matching_service import MatchingService
 from app.utils.dependencies import (
-    get_current_active_user, 
-    get_current_employer, 
-    get_current_user_optional
+    get_current_active_user, require_employer, 
+    require_student, get_optional_user, TokenData
 )
 
 router = APIRouter()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# In-memory storage (replace with database in production)
+jobs_db: Dict[str, Job] = {}
+employer_jobs: Dict[str, List[str]] = {}  # employer_id -> [job_ids]
 
-@router.post("/", response_model=APIResponse, status_code=status.HTTP_201_CREATED)
-async def create_job(
+# Import from other modules (these would be from database in production)
+from app.routers.resumes import resumes_db, user_resumes
+from app.routers.auth import users_db
+
+# Initialize matching service
+matching_service = MatchingService()
+
+
+@router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+async def create_job_posting(
     job_data: JobCreate,
-    current_user: Dict[str, Any] = Depends(get_current_employer)
+    current_user: TokenData = Depends(require_employer())
 ):
     """
-    Create a new job posting (employers only)
+    Create a new job posting.
+    
+    This endpoint allows employers to post new job openings with detailed
+    requirements, skills, and other job specifications.
     
     Args:
-        job_data (JobCreate): Job creation data
-        current_user: Current authenticated employer
+        job_data: Job posting data including title, description, requirements
+        current_user: Current authenticated employer user
         
     Returns:
-        APIResponse: Success response with job data
+        Dict containing created job information
         
     Raises:
-        HTTPException: If job creation fails
+        HTTPException: If validation fails or creation errors occur
     """
     try:
-        job = JobService.create_job(job_data, current_user["id"])
+        # Generate unique job ID
+        job_id = str(uuid.uuid4())
         
-        return APIResponse(
-            success=True,
-            message="Job created successfully",
-            data={
-                "job": job,
+        # Create job object
+        job = Job(
+            _id=job_id,
+            employer_id=current_user.user_id,
+            title=job_data.title,
+            description=job_data.description,
+            required_skills=job_data.required_skills,
+            location=job_data.location,
+            experience_level=job_data.experience_level,
+            employment_type=job_data.employment_type,
+            salary_range=job_data.salary_range,
+            company_name=job_data.company_name,
+            status=JobStatus.OPEN,
+            posted_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        
+        # Store in database
+        jobs_db[job_id] = job
+        
+        # Update employer's job list
+        if current_user.user_id not in employer_jobs:
+            employer_jobs[current_user.user_id] = []
+        employer_jobs[current_user.user_id].append(job_id)
+        
+        # Create response
+        job_out = JobOut(
+            _id=job_id,
+            employer_id=current_user.user_id,
+            title=job.title,
+            description=job.description,
+            required_skills=job.required_skills,
+            location=job.location,
+            experience_level=job.experience_level,
+            employment_type=job.employment_type,
+            salary_range=job.salary_range,
+            company_name=job.company_name,
+            status=job.status,
+            posted_at=job.posted_at,
+            updated_at=job.updated_at,
+            applications_count=0
+        )
+        
+        logger.info(f"Created job posting {job_id} by employer {current_user.user_id}")
+        
+        return {
+            "success": True,
+            "message": "Job posting created successfully",
+            "data": {
+                "job": job_out.dict(),
                 "next_steps": [
-                    "Job is now live and visible to job seekers",
-                    "You can edit or deactivate the job anytime",
-                    "Check applications in the applications section"
+                    "Job is now live and visible to candidates",
+                    "Monitor applications and candidate matches",
+                    "Review AI-ranked candidates as they apply"
                 ]
             }
-        )
-        
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to create job. Please try again."
-        )
-
-
-@router.get("/", response_model=APIResponse)
-async def list_jobs(
-    skip: int = Query(0, ge=0, description="Number of jobs to skip"),
-    limit: int = Query(10, ge=1, le=100, description="Number of jobs to return"),
-    search: Optional[str] = Query(None, description="Search term for job title or company"),
-    location: Optional[str] = Query(None, description="Filter by location"),
-    job_type: Optional[str] = Query(None, description="Filter by job type"),
-    active_only: bool = Query(True, description="Show only active jobs"),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
-):
-    """
-    List all available jobs with filtering and pagination
-    
-    Args:
-        skip: Number of jobs to skip (pagination)
-        limit: Number of jobs to return (pagination)
-        search: Search term for job title or company name
-        location: Filter by job location
-        job_type: Filter by job type
-        active_only: Show only active jobs
-        current_user: Optional current user (for personalization)
-        
-    Returns:
-        APIResponse: List of jobs matching criteria
-    """
-    try:
-        filters = {
-            "search": search,
-            "location": location,
-            "job_type": job_type,
-            "active_only": active_only
         }
         
-        jobs = JobService.get_jobs(skip=skip, limit=limit, filters=filters)
-        total_count = JobService.count_jobs(filters=filters)
-        
-        return APIResponse(
-            success=True,
-            message=f"Retrieved {len(jobs)} jobs",
-            data={
-                "jobs": jobs,
-                "pagination": {
-                    "total_count": total_count,
-                    "returned_count": len(jobs),
-                    "skip": skip,
-                    "limit": limit,
-                    "has_more": (skip + len(jobs)) < total_count
-                },
-                "filters_applied": {k: v for k, v in filters.items() if v is not None}
-            }
-        )
-        
     except Exception as e:
+        logger.error(f"Error creating job posting for employer {current_user.user_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve jobs. Please try again."
+            detail=f"Error creating job posting: {str(e)}"
         )
 
 
-@router.get("/{job_id}", response_model=APIResponse)
-async def get_job_details(
-    job_id: int,
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
+@router.get("/", response_model=Dict[str, Any])
+async def list_jobs(
+    skip: int = Query(0, ge=0, description="Number of jobs to skip"),
+    limit: int = Query(20, ge=1, le=100, description="Number of jobs to return"),
+    location: Optional[str] = Query(None, description="Filter by location"),
+    experience_level: Optional[str] = Query(None, description="Filter by experience level"),
+    employment_type: Optional[str] = Query(None, description="Filter by employment type"),
+    skills: Optional[str] = Query(None, description="Filter by skills (comma-separated)"),
+    current_user: Optional[TokenData] = Depends(get_optional_user)
 ):
     """
-    Get details for a specific job
+    List available job postings with filtering and pagination.
+    
+    This endpoint returns a paginated list of open job postings with
+    optional filtering by location, experience level, and skills.
     
     Args:
-        job_id (int): Job ID
-        current_user: Optional current user (for personalization)
+        skip: Number of jobs to skip for pagination
+        limit: Maximum number of jobs to return
+        location: Optional location filter
+        experience_level: Optional experience level filter
+        employment_type: Optional employment type filter
+        skills: Optional skills filter (comma-separated)
+        current_user: Optional current user for personalized results
         
     Returns:
-        APIResponse: Job details
+        Dict containing list of jobs and pagination info
+    """
+    # Get all open jobs
+    open_jobs = [
+        job for job in jobs_db.values() 
+        if job.status == JobStatus.OPEN
+    ]
+    
+    # Apply filters
+    filtered_jobs = []
+    for job in open_jobs:
+        # Location filter
+        if location and location.lower() not in job.location.lower():
+            continue
+        
+        # Experience level filter
+        if experience_level and job.experience_level != experience_level:
+            continue
+        
+        # Employment type filter
+        if employment_type and job.employment_type != employment_type:
+            continue
+        
+        # Skills filter
+        if skills:
+            required_skills = [skill.strip().lower() for skill in skills.split(',')]
+            job_skills = [skill.lower() for skill in job.required_skills]
+            if not any(req_skill in job_skills for req_skill in required_skills):
+                continue
+        
+        filtered_jobs.append(job)
+    
+    # Sort by posted date (newest first)
+    filtered_jobs.sort(key=lambda x: x.posted_at, reverse=True)
+    
+    # Apply pagination
+    total_jobs = len(filtered_jobs)
+    paginated_jobs = filtered_jobs[skip:skip + limit]
+    
+    # Convert to output format
+    job_list = []
+    for job in paginated_jobs:
+        job_out = JobOut(
+            _id=job.id,
+            employer_id=job.employer_id,
+            title=job.title,
+            description=job.description,
+            required_skills=job.required_skills,
+            location=job.location,
+            experience_level=job.experience_level,
+            employment_type=job.employment_type,
+            salary_range=job.salary_range,
+            company_name=job.company_name,
+            status=job.status,
+            posted_at=job.posted_at,
+            updated_at=job.updated_at,
+            applications_count=_get_applications_count(job.id)
+        )
+        job_list.append(job_out.dict())
+    
+    return {
+        "success": True,
+        "message": f"Found {total_jobs} jobs",
+        "data": {
+            "jobs": job_list,
+            "pagination": {
+                "total": total_jobs,
+                "skip": skip,
+                "limit": limit,
+                "has_more": skip + limit < total_jobs
+            },
+            "filters_applied": {
+                "location": location,
+                "experience_level": experience_level,
+                "employment_type": employment_type,
+                "skills": skills
+            }
+        }
+    }
+
+
+@router.get("/{job_id}", response_model=Dict[str, Any])
+async def get_job_details(
+    job_id: str,
+    current_user: Optional[TokenData] = Depends(get_optional_user)
+):
+    """
+    Get detailed information about a specific job posting.
+    
+    Args:
+        job_id: The ID of the job to retrieve
+        current_user: Optional current user for personalized info
+        
+    Returns:
+        Dict containing detailed job information
         
     Raises:
         HTTPException: If job not found
     """
-    job = JobService.get_job_by_id(job_id)
-    
-    if not job:
+    if job_id not in jobs_db:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found"
         )
     
-    # Add additional context based on user role
-    additional_data = {}
-    if current_user:
-        if current_user["role"] == UserRole.EMPLOYER and current_user["id"] == job["employer_id"]:
-            # If employer viewing their own job, add application statistics
-            additional_data["is_owner"] = True
-            additional_data["applications_count"] = job.get("applications_count", 0)
-        elif current_user["role"] == UserRole.JOB_SEEKER:
-            # If job seeker, add application status if they applied
-            from app.services.application_service import ApplicationService
-            application = ApplicationService.get_application_by_job_and_user(
-                job_id, current_user["id"]
-            )
-            additional_data["user_applied"] = application is not None
-            if application:
-                additional_data["application_status"] = application["status"]
+    job = jobs_db[job_id]
     
-    return APIResponse(
-        success=True,
-        message="Job details retrieved successfully",
-        data={
-            "job": job,
-            **additional_data
+    # Create detailed response
+    job_out = JobOut(
+        _id=job.id,
+        employer_id=job.employer_id,
+        title=job.title,
+        description=job.description,
+        required_skills=job.required_skills,
+        location=job.location,
+        experience_level=job.experience_level,
+        employment_type=job.employment_type,
+        salary_range=job.salary_range,
+        company_name=job.company_name,
+        status=job.status,
+        posted_at=job.posted_at,
+        updated_at=job.updated_at,
+        applications_count=_get_applications_count(job_id)
+    )
+    
+    response_data = {
+        "job": job_out.dict(),
+        "employer_info": _get_employer_info(job.employer_id)
+    }
+    
+    # Add personalized info if user is logged in
+    if current_user and current_user.role == UserRole.STUDENT:
+        response_data["user_context"] = {
+            "has_applied": _user_has_applied(current_user.user_id, job_id),
+            "match_score": await _calculate_user_match_score(current_user.user_id, job)
         }
+    
+    return {
+        "success": True,
+        "message": "Job details retrieved successfully",
+        "data": response_data
+    }
+
+
+@router.get("/{job_id}/candidates", response_model=Dict[str, Any])
+async def get_job_candidates(
+    job_id: str,
+    current_user: TokenData = Depends(require_employer())
+):
+    """
+    Get AI-ranked candidates for a specific job posting.
+    
+    This endpoint returns a list of candidates who have applied to the job,
+    ranked by AI matching algorithms based on their resume content
+    and the job requirements.
+    
+    Args:
+        job_id: The ID of the job to get candidates for
+        current_user: Current authenticated employer user
+        
+    Returns:
+        Dict containing ranked list of candidates with match scores
+        
+    Raises:
+        HTTPException: If job not found or access denied
+    """
+    # Check if job exists
+    if job_id not in jobs_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    
+    job = jobs_db[job_id]
+    
+    # Check ownership
+    if job.employer_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this job's candidates"
+        )
+    
+    try:
+        # Get applications for this job
+        applications = _get_job_applications(job_id)
+        
+        if not applications:
+            return {
+                "success": True,
+                "message": "No candidates found for this job",
+                "data": {
+                    "job_id": job_id,
+                    "job_title": job.title,
+                    "total_candidates": 0,
+                    "candidates": [],
+                    "average_match_score": 0.0
+                }
+            }
+        
+        # Prepare candidate data for matching
+        candidates_data = []
+        for app in applications:
+            # Get user info
+            user = users_db.get(app.user_id)
+            if not user:
+                continue
+            
+            # Get resume info
+            resume = resumes_db.get(app.resume_id)
+            if not resume or not resume.parsed_text:
+                continue
+            
+            candidate_data = {
+                'user_id': app.user_id,
+                'user_name': user.profile.name,
+                'user_email': user.email,
+                'resume_id': app.resume_id,
+                'resume_text': resume.parsed_text,
+                'skills': resume.parsed_sections.skills if resume.parsed_sections else [],
+                'experience': resume.parsed_sections.experience if resume.parsed_sections else [],
+                'experience_level': _determine_experience_level(resume.parsed_text),
+                'job_id': job_id
+            }
+            candidates_data.append(candidate_data)
+        
+        # Use AI matching service to rank candidates
+        match_response = await matching_service.match_candidates_to_job(
+            job_description=job.description,
+            job_requirements=job.required_skills,
+            candidates=candidates_data
+        )
+        
+        # Update response with job info
+        match_response.job_id = job_id
+        match_response.job_title = job.title
+        
+        logger.info(f"Generated candidate matches for job {job_id} - {len(match_response.candidates)} candidates")
+        
+        return {
+            "success": True,
+            "message": f"Found {match_response.total_candidates} candidates for this job",
+            "data": match_response.dict()
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting candidates for job {job_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error retrieving candidates: {str(e)}"
+        )
+
+
+@router.put("/{job_id}", response_model=Dict[str, Any])
+async def update_job_posting(
+    job_id: str,
+    job_update: JobUpdate,
+    current_user: TokenData = Depends(require_employer())
+):
+    """
+    Update an existing job posting.
+    
+    Args:
+        job_id: The ID of the job to update
+        job_update: Updated job information
+        current_user: Current authenticated employer user
+        
+    Returns:
+        Dict containing updated job information
+        
+    Raises:
+        HTTPException: If job not found or access denied
+    """
+    # Check if job exists
+    if job_id not in jobs_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    
+    job = jobs_db[job_id]
+    
+    # Check ownership
+    if job.employer_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this job"
+        )
+    
+    # Update job fields
+    update_data = job_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(job, field, value)
+    
+    job.updated_at = datetime.utcnow()
+    
+    # Save changes
+    jobs_db[job_id] = job
+    
+    # Create response
+    job_out = JobOut(
+        _id=job_id,
+        employer_id=job.employer_id,
+        title=job.title,
+        description=job.description,
+        required_skills=job.required_skills,
+        location=job.location,
+        experience_level=job.experience_level,
+        employment_type=job.employment_type,
+        salary_range=job.salary_range,
+        company_name=job.company_name,
+        status=job.status,
+        posted_at=job.posted_at,
+        updated_at=job.updated_at,
+        applications_count=_get_applications_count(job_id)
+    )
+    
+    return {
+        "success": True,
+        "message": "Job posting updated successfully",
+        "data": {"job": job_out.dict()}
+    }
+
+
+@router.delete("/{job_id}", response_model=SuccessResponse)
+async def delete_job_posting(
+    job_id: str,
+    current_user: TokenData = Depends(require_employer())
+):
+    """
+    Delete a job posting.
+    
+    Args:
+        job_id: The ID of the job to delete
+        current_user: Current authenticated employer user
+        
+    Returns:
+        Success response confirming deletion
+        
+    Raises:
+        HTTPException: If job not found or access denied
+    """
+    # Check if job exists
+    if job_id not in jobs_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found"
+        )
+    
+    job = jobs_db[job_id]
+    
+    # Check ownership
+    if job.employer_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this job"
+        )
+    
+    # Delete job
+    del jobs_db[job_id]
+    
+    # Remove from employer's job list
+    if current_user.user_id in employer_jobs:
+        employer_jobs[current_user.user_id] = [
+            jid for jid in employer_jobs[current_user.user_id] 
+            if jid != job_id
+        ]
+    
+    return SuccessResponse(
+        message="Job posting deleted successfully"
     )
 
 
-@router.put("/{job_id}", response_model=APIResponse)
-async def update_job(
-    job_id: int,
-    job_update: JobUpdate,
-    current_user: Dict[str, Any] = Depends(get_current_employer)
-):
-    """
-    Update a job posting (job owner only)
-    
-    Args:
-        job_id (int): Job ID to update
-        job_update (JobUpdate): Job update data
-        current_user: Current authenticated employer
-        
-    Returns:
-        APIResponse: Success response with updated job data
-        
-    Raises:
-        HTTPException: If job not found or user not authorized
-    """
-    job = JobService.get_job_by_id(job_id)
-    
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found"
-        )
-    
-    if job["employer_id"] != current_user["id"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update your own job postings"
-        )
-    
-    try:
-        updated_job = JobService.update_job(job_id, job_update)
-        
-        return APIResponse(
-            success=True,
-            message="Job updated successfully",
-            data={
-                "job": updated_job
-            }
-        )
-        
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to update job. Please try again."
-        )
+# Helper functions
+def _get_applications_count(job_id: str) -> int:
+    """Get the number of applications for a job."""
+    # This would query the applications database in production
+    return 0  # Placeholder
 
 
-@router.delete("/{job_id}", response_model=APIResponse)
-async def delete_job(
-    job_id: int,
-    current_user: Dict[str, Any] = Depends(get_current_employer)
-):
-    """
-    Delete a job posting (job owner only)
-    
-    Args:
-        job_id (int): Job ID to delete
-        current_user: Current authenticated employer
-        
-    Returns:
-        APIResponse: Success confirmation
-        
-    Raises:
-        HTTPException: If job not found or user not authorized
-    """
-    job = JobService.get_job_by_id(job_id)
-    
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found"
-        )
-    
-    if job["employer_id"] != current_user["id"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only delete your own job postings"
-        )
-    
-    try:
-        JobService.delete_job(job_id)
-        
-        return APIResponse(
-            success=True,
-            message="Job deleted successfully",
-            data={
-                "deleted_job_id": job_id
-            }
-        )
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete job. Please try again."
-        )
-
-
-@router.get("/employer/{employer_id}", response_model=APIResponse)
-async def get_employer_jobs(
-    employer_id: int,
-    skip: int = Query(0, ge=0),
-    limit: int = Query(10, ge=1, le=100),
-    active_only: bool = Query(True),
-    current_user: Optional[Dict[str, Any]] = Depends(get_current_user_optional)
-):
-    """
-    Get all jobs posted by a specific employer
-    
-    Args:
-        employer_id (int): Employer ID
-        skip: Number of jobs to skip
-        limit: Number of jobs to return
-        active_only: Show only active jobs
-        current_user: Optional current user
-        
-    Returns:
-        APIResponse: List of employer's jobs
-    """
-    try:
-        jobs = JobService.get_jobs_by_employer(
-            employer_id=employer_id,
-            skip=skip,
-            limit=limit,
-            active_only=active_only
-        )
-        
-        total_count = JobService.count_jobs_by_employer(
-            employer_id=employer_id,
-            active_only=active_only
-        )
-        
-        return APIResponse(
-            success=True,
-            message=f"Retrieved {len(jobs)} jobs for employer",
-            data={
-                "jobs": jobs,
-                "employer_id": employer_id,
-                "pagination": {
-                    "total_count": total_count,
-                    "returned_count": len(jobs),
-                    "skip": skip,
-                    "limit": limit,
-                    "has_more": (skip + len(jobs)) < total_count
-                }
-            }
-        )
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to retrieve employer jobs. Please try again."
-        )
-
-
-@router.post("/{job_id}/apply", response_model=APIResponse)
-def apply_to_job(
-    job_id: int,
-    application_data: ApplicationCreate,
-    current_user: Dict[str, Any] = Depends(get_current_active_user)
-):
-    """
-    Apply to a job (job seekers only)
-    
-    This endpoint allows job seekers to submit applications for job postings.
-    """
-    try:
-        # Check if user is a job seeker
-        if current_user.get("role") != UserRole.JOB_SEEKER:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Only job seekers can apply to jobs"
-            )
-        
-        # Verify the job exists and is active
-        job = JobService.get_job_by_id(job_id)
-        if not job:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found"
-            )
-        
-        if not job.get("is_active", True):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="This job is no longer accepting applications"
-            )
-        
-        # Create the application
-        application = ApplicationService.create_application(
-            application_data, 
-            current_user["id"]
-        )
-        
-        return APIResponse(
-            success=True,
-            message="Application submitted successfully",
-            data={
-                "application": {
-                    "id": application["id"],
-                    "job_id": application["job_id"],
-                    "job_title": job["title"],
-                    "company_name": job["company_name"],
-                    "status": application["status"],
-                    "applied_at": application["applied_at"],
-                    "cover_letter": application["cover_letter"]
-                },
-                "next_steps": [
-                    "Your application has been submitted to the employer",
-                    "You will be notified of any status updates",
-                    "You can track your application status in your dashboard"
-                ]
-            }
-        )
-        
-    except ValueError as e:
-        # Handle specific application errors
-        if "already applied" in str(e):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="You have already applied to this job"
-            )
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-        
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to submit application. Please try again."
-        )
-
-
-# AI-powered job matching and recommendation endpoints
-
-@router.get("/{job_id}/match-candidates", response_model=APIResponse)
-async def get_job_candidate_matches(
-    job_id: int,
-    top_n: int = Query(default=10, le=50, description="Number of top candidates to return"),
-    current_user: Dict[str, Any] = Depends(get_current_employer)
-):
-    """Get AI-powered candidate matches for a specific job."""
-    try:
-        # Get job details
-        job = JobService.get_job_by_id(job_id)
-        if not job:
-            raise HTTPException(status_code=404, detail="Job not found")
-        
-        # Check if employer owns this job
-        if job["employer_id"] != current_user["id"]:
-            raise HTTPException(status_code=403, detail="Access denied")
-        
-        # Get all resumes (candidates) from app_data
-        candidates = []
-        for resume in app_data.get("resumes", []):
-            if resume.get("parsing_result", {}).get("success"):
-                candidate_data = {
-                    "id": resume["user_id"],
-                    "resume_id": resume["id"],
-                    "skills": resume["parsing_result"].get("skills", {}),
-                    "experience_years": resume["parsing_result"].get("experience_years"),
-                    "education": resume["parsing_result"].get("education", []),
-                    "text": resume["parsing_result"].get("text", ""),
-                    "contact_info": resume["parsing_result"].get("contact_info", {})
-                }
-                candidates.append(candidate_data)
-        
-        if not candidates:
-            return APIResponse(
-                success=True,
-                message="No candidates found for matching",
-                data={"matches": []}
-            )
-        
-        # Use AI matching service
-        from app.services.matching_service import job_matching_service
-        
-        job_data = {
-            "id": job["id"],
-            "title": job["title"],
-            "description": job["description"],
-            "requirements": job.get("requirements", ""),
-            "location": job.get("location", ""),
-            "salary_range": job.get("salary_range", "")
+def _get_employer_info(employer_id: str) -> Dict[str, Any]:
+    """Get employer information."""
+    user = users_db.get(employer_id)
+    if user:
+        return {
+            "company_name": user.profile.name,
+            "company_email": user.email
         }
-        
-        # Get ranked candidates
-        ranked_candidates = job_matching_service.rank_candidates_for_job(candidates, job_data)
-        
-        # Format response
-        matches = []
-        for match in ranked_candidates[:top_n]:
-            candidate = match["candidate_data"]
-            match_details = match["match_details"]
-            
-            matches.append({
-                "candidate_id": candidate["id"],
-                "resume_id": candidate["resume_id"],
-                "match_score": match["match_score"],
-                "contact_info": candidate.get("contact_info", {}),
-                "experience_years": candidate.get("experience_years"),
-                "education_count": len(candidate.get("education", [])),
-                "skill_match": match_details.get("skill_match", 0),
-                "experience_match": match_details.get("experience_match", 0),
-                "education_match": match_details.get("education_match", 0),
-                "matching_skills": match_details.get("matching_skills", {}),
-                "missing_skills": match_details.get("missing_skills", {}),
-                "job_level": match_details.get("job_level", "unknown")
-            })
-        
-        return APIResponse(
-            success=True,
-            message=f"Found {len(matches)} candidate matches",
-            data={
-                "job_id": job_id,
-                "job_title": job["title"],
-                "matches": matches,
-                "total_candidates_analyzed": len(candidates),
-                "matching_criteria": {
-                    "skills_weight": "40%",
-                    "experience_weight": "25%",
-                    "text_similarity_weight": "20%",
-                    "education_weight": "15%"
-                }
-            }
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting job matches: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to find candidate matches")
+    return {"company_name": "Unknown", "company_email": ""}
 
 
-@router.get("/recommendations", response_model=APIResponse)
-async def get_job_recommendations(
-    top_n: int = Query(default=10, le=50, description="Number of job recommendations"),
-    current_user: Dict[str, Any] = Depends(get_current_active_user)
-):
-    """Get AI-powered job recommendations for the current user."""
+def _user_has_applied(user_id: str, job_id: str) -> bool:
+    """Check if user has applied to a job."""
+    # This would query the applications database in production
+    return False  # Placeholder
+
+
+async def _calculate_user_match_score(user_id: str, job: Job) -> Optional[float]:
+    """Calculate match score between user and job."""
     try:
-        # Only job seekers can get recommendations
-        if current_user.get("role") != UserRole.JOB_SEEKER:
-            raise HTTPException(status_code=403, detail="Only job seekers can get recommendations")
+        # Get user's latest resume
+        user_resume_ids = user_resumes.get(user_id, [])
+        if not user_resume_ids:
+            return None
         
-        # Get user's resume data
-        user_resumes = [
-            resume for resume in app_data.get("resumes", [])
-            if resume["user_id"] == current_user["id"] and resume.get("parsing_result", {}).get("success")
-        ]
+        latest_resume_id = user_resume_ids[-1]
+        resume = resumes_db.get(latest_resume_id)
         
-        if not user_resumes:
-            raise HTTPException(
-                status_code=404, 
-                detail="Please upload a resume first to get job recommendations"
-            )
+        if not resume or not resume.parsed_text:
+            return None
         
-        # Use the most recent resume
-        latest_resume = max(user_resumes, key=lambda x: x.get("upload_timestamp", ""))
-        parsing_result = latest_resume["parsing_result"]
+        # Prepare candidate data
+        candidate_data = [{
+            'user_id': user_id,
+            'resume_text': resume.parsed_text,
+            'skills': resume.parsed_sections.skills if resume.parsed_sections else [],
+            'experience': resume.parsed_sections.experience if resume.parsed_sections else []
+        }]
         
-        candidate_data = {
-            "skills": parsing_result.get("skills", {}),
-            "experience_years": parsing_result.get("experience_years"),
-            "education": parsing_result.get("education", []),
-            "text": parsing_result.get("text", ""),
-            "contact_info": parsing_result.get("contact_info", {})
-        }
-        
-        # Get all active jobs
-        jobs = [job for job in JobService.get_all_jobs() if job.get("is_active", True)]
-        
-        if not jobs:
-            return APIResponse(
-                success=True,
-                message="No active jobs available for recommendations",
-                data={"recommendations": []}
-            )
-        
-        # Use AI matching service for recommendations
-        from app.services.matching_service import job_matching_service
-        
-        job_recommendations = job_matching_service.recommend_jobs_for_candidate(
-            candidate_data, jobs, top_n
+        # Calculate match
+        match_response = await matching_service.match_candidates_to_job(
+            job_description=job.description,
+            job_requirements=job.required_skills,
+            candidates=candidate_data
         )
         
-        # Format response
-        recommendations = []
-        for rec in job_recommendations:
-            job = rec["job_data"]
-            match_details = rec["match_details"]
-            
-            recommendations.append({
-                "job_id": job["id"],
-                "title": job["title"],
-                "company": job.get("company", ""),
-                "location": job.get("location", ""),
-                "salary_range": job.get("salary_range", ""),
-                "employment_type": job.get("employment_type", ""),
-                "match_score": rec["match_score"],
-                "skill_match": match_details.get("skill_match", 0),
-                "experience_match": match_details.get("experience_match", 0),
-                "education_match": match_details.get("education_match", 0),
-                "matching_skills": match_details.get("matching_skills", {}),
-                "missing_skills": match_details.get("missing_skills", {}),
-                "job_level": match_details.get("job_level", "unknown"),
-                "recommendation_reason": _generate_recommendation_reason(match_details)
-            })
+        if match_response.candidates:
+            return match_response.candidates[0].match_score
         
-        return APIResponse(
-            success=True,
-            message=f"Found {len(recommendations)} job recommendations",
-            data={
-                "recommendations": recommendations,
-                "user_profile": {
-                    "skills_count": sum(len(skills) for skills in candidate_data["skills"].values()),
-                    "experience_years": candidate_data.get("experience_years"),
-                    "education_count": len(candidate_data.get("education", []))
-                },
-                "resume_id": latest_resume["id"]
-            }
-        )
-        
-    except HTTPException:
-        raise
     except Exception as e:
-        logger.error(f"Error getting job recommendations: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to get job recommendations")
+        logger.error(f"Error calculating match score for user {user_id}: {str(e)}")
+    
+    return None
 
 
-def _generate_recommendation_reason(match_details: dict) -> str:
-    """Generate a human-readable recommendation reason."""
-    reasons = []
+def _get_job_applications(job_id: str) -> List[Any]:
+    """Get applications for a job."""
+    # This would query the applications database in production
+    return []  # Placeholder
+
+
+def _determine_experience_level(resume_text: str) -> Optional[str]:
+    """Determine experience level from resume text."""
+    if not resume_text:
+        return None
     
-    skill_match = match_details.get("skill_match", 0)
-    experience_match = match_details.get("experience_match", 0)
+    text_lower = resume_text.lower()
     
-    if skill_match > 80:
-        reasons.append("Strong skill alignment")
-    elif skill_match > 60:
-        reasons.append("Good skill match")
-    
-    if experience_match > 80:
-        reasons.append("Perfect experience level")
-    elif experience_match > 60:
-        reasons.append("Suitable experience")
-    
-    matching_skills = match_details.get("matching_skills", {})
-    if matching_skills:
-        skill_count = sum(len(skills) for skills in matching_skills.values())
-        if skill_count > 0:
-            reasons.append(f"Matches {skill_count} required skills")
-    
-    if not reasons:
-        reasons.append("Potential career growth opportunity")
-    
-    return " • ".join(reasons)
+    # Simple heuristics for experience level
+    if any(word in text_lower for word in ['senior', 'lead', 'principal', 'architect']):
+        return 'senior'
+    elif any(word in text_lower for word in ['junior', 'entry', 'graduate', 'intern']):
+        return 'entry'
+    else:
+        return 'mid'

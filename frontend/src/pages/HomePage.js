@@ -1,58 +1,75 @@
+/**
+ * Homepage component that serves as the landing page.
+ * Displays job listings and provides entry point to the application.
+ */
+
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import JobList from '../components/JobList';
 
 const HomePage = () => {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   return (
-    <div className="home-page">
-      <div className="hero-section">
+    <div className="homepage">
+      {/* Hero Section */}
+      <section className="hero">
         <div className="container">
-          <h1>AI-Powered Job Portal</h1>
-          <p>Find your dream job with intelligent resume screening and career counseling</p>
-          
-          {!isAuthenticated ? (
+          <div className="hero-content">
+            <h1>AI-Powered Job Portal</h1>
+            <p>
+              Find your dream job with the help of artificial intelligence. 
+              Get personalized resume feedback, smart job matching, and career guidance.
+            </p>
             <div className="hero-actions">
-              <Link to="/register" className="btn btn-primary">Get Started</Link>
-              <Link to="/login" className="btn btn-secondary">Sign In</Link>
-            </div>
-          ) : (
-            <div className="hero-actions">
-              <Link 
-                to={user?.role === 'employer' ? '/employer-dashboard' : '/dashboard'} 
-                className="btn btn-primary"
-              >
-                Go to Dashboard
-              </Link>
-            </div>
-          )}
-        </div>
-      </div>
-
-      <div className="features-section">
-        <div className="container">
-          <h2>AI-Powered Features</h2>
-          <div className="features-grid">
-            <div className="feature-card">
-              <h3>🤖 Smart Resume Screening</h3>
-              <p>AI analyzes resumes and matches candidates with relevant job openings</p>
-            </div>
-            <div className="feature-card">
-              <h3>💼 Intelligent Job Matching</h3>
-              <p>Find the perfect job match based on your skills and experience</p>
-            </div>
-            <div className="feature-card">
-              <h3>🎯 Career Counseling</h3>
-              <p>Get personalized career guidance and skill recommendations</p>
-            </div>
-            <div className="feature-card">
-              <h3>📊 Analytics Dashboard</h3>
-              <p>Track your applications and get insights on your job search</p>
+              {isAuthenticated ? (
+                <Link to="/dashboard" className="btn btn-primary">
+                  Go to Dashboard
+                </Link>
+              ) : (
+                <>
+                  <Link to="/register" className="btn btn-primary">
+                    Get Started
+                  </Link>
+                  <Link to="/login" className="btn btn-secondary">
+                    Sign In
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         </div>
-      </div>
+      </section>
+
+      {/* Features Section */}
+      <section className="features">
+        <div className="container">
+          <h2>Why Choose Our AI Job Portal?</h2>
+          <div className="features-grid">
+            <div className="feature">
+              <h3>🤖 AI Resume Analysis</h3>
+              <p>Get instant feedback on your resume with our AI-powered analysis engine.</p>
+            </div>
+            <div className="feature">
+              <h3>🎯 Smart Job Matching</h3>
+              <p>Find jobs that perfectly match your skills and career goals.</p>
+            </div>
+            <div className="feature">
+              <h3>💼 Career Counseling</h3>
+              <p>Receive personalized career guidance from our AI counselor.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Job Listings Section */}
+      <section className="job-listings">
+        <div className="container">
+          <h2>Latest Job Opportunities</h2>
+          <JobList />
+        </div>
+      </section>
     </div>
   );
 };

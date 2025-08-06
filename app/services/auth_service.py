@@ -1,221 +1,364 @@
-from typing import Optional, Dict, Any
-from datetime import datetime
-from app.schemas import UserCreate, UserResponse, UserRole
-from app.utils.security import get_password_hash, verify_password, create_access_token
+"""
+Authentication service for user management and session handling.
 
-# In-memory database simulation (replace with actual database in later phases)
-users_db: Dict[str, Dict[str, Any]] = {}
-user_id_counter = 1
+This service handles user authentication, registration, and session management
+including password hashing, token generation, and user validation.
+"""
+
+import logging
+from typing import Optional, Dict, Any
+from datetime import datetime, timedelta
+import uuid
+
+from app.schemas import User, UserCreate, UserLogin, UserOut, Token
+from app.utils.security import verify_password, get_password_hash, create_access_token
+from app.config import settings
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# In-memory user storage (this would be replaced with actual database in production)
+users_store: Dict[str, User] = {}
+email_to_user_id: Dict[str, str] = {}
 
 
 class AuthService:
-    """Authentication service for user management"""
+    """Service for handling authentication operations."""
     
-    @staticmethod
-    def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
+    def __init__(self):
+        """Initialize the authentication service."""
+        pass
+    
+    async def register_user(self, user_data: UserCreate) -> Dict[str, Any]:
         """
-        Get user by email address
+        Register a new user.
         
         Args:
-            email (str): User email
+            user_data: User registration data
             
         Returns:
-            dict or None: User data if found, None otherwise
-        """
-        return users_db.get(email.lower())
-    
-    @staticmethod
-    def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Get user by ID
-        
-        Args:
-            user_id (int): User ID
-            
-        Returns:
-            dict or None: User data if found, None otherwise
-        """
-        for user_data in users_db.values():
-            if user_data.get("id") == user_id:
-                return user_data
-        return None
-    
-    @staticmethod
-    def create_user(user_data: UserCreate) -> Dict[str, Any]:
-        """
-        Create a new user
-        
-        Args:
-            user_data (UserCreate): User creation data
-            
-        Returns:
-            dict: Created user data
+            Dict containing success status and user information
             
         Raises:
-            ValueError: If user already exists
+            ValueError: If email already exists or validation fails
         """
-        global user_id_counter
+        try:
+            # Check if email already exists
+            if user_data.email in email_to_user_id:
+                raise ValueError("Email already registered")
+            
+            # Generate user ID
+            user_id = str(uuid.uuid4())
+            
+            # Hash password
+            hashed_password = get_password_hash(user_data.password)
+            
+            # Create user object
+            user = User(
+                _id=user_id,
+                email=user_data.email,
+                hashed_password=hashed_password,
+                role=user_data.role,
+                profile=user_data.profile,
+                is_active=True,
+                is_verified=False,
+                created_at=datetime.utcnow(),
+                updated_at=datetime.utcnow()
+            )
+            
+            # Store user
+            users_store[user_id] = user
+            email_to_user_id[user_data.email] = user_id
+            
+            logger.info(f"Successfully registered user {user_id} with email {user_data.email}")
+            
+            # Create user output (without sensitive data)
+            user_out = UserOut(
+                _id=user_id,
+                email=user.email,
+                role=user.role,
+                profile=user.profile,
+                created_at=user.created_at,
+                updated_at=user.updated_at
+            )
+            
+            return {
+                "success": True,
+                "user": user_out,
+                "message": "User registered successfully"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error registering user with email {user_data.email}: {str(e)}")
+            raise ValueError(f"Registration failed: {str(e)}")
+    
+    async def authenticate_user(self, login_data: UserLogin) -> Dict[str, Any]:
+        """
+        Authenticate a user and return token.
         
-        email_lower = user_data.email.lower()
+        Args:
+            login_data: User login credentials
+            
+        Returns:
+            Dict containing authentication token and user info
+            
+        Raises:
+            ValueError: If authentication fails
+        """
+        try:
+            # Check if user exists
+            if login_data.email not in email_to_user_id:
+                raise ValueError("Invalid email or password")
+            
+            user_id = email_to_user_id[login_data.email]
+            user = users_store[user_id]
+            
+            # Verify password
+            if not verify_password(login_data.password, user.hashed_password):
+                raise ValueError("Invalid email or password")
+            
+            # Check if user is active
+            if not user.is_active:
+                raise ValueError("Account is deactivated")
+            
+            # Create access token
+            access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+            access_token = create_access_token(
+                data={"sub": user.email, "user_id": user_id, "role": user.role},
+                expires_delta=access_token_expires
+            )
+            
+            logger.info(f"Successfully authenticated user {user_id}")
+            
+            return {
+                "success": True,
+                "access_token": access_token,
+                "token_type": "bearer",
+                "expires_in": settings.access_token_expire_minutes * 60,
+                "user": {
+                    "id": user_id,
+                    "email": user.email,
+                    "role": user.role,
+                    "name": user.profile.name
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"Error authenticating user with email {login_data.email}: {str(e)}")
+            raise ValueError(f"Authentication failed: {str(e)}")
+    
+    async def get_user_by_id(self, user_id: str) -> Optional[User]:
+        """
+        Get a user by their ID.
         
-        # Check if user already exists
-        if email_lower in users_db:
-            raise ValueError("User with this email already exists")
+        Args:
+            user_id: The user's unique identifier
+            
+        Returns:
+            User object if found, None otherwise
+        """
+        return users_store.get(user_id)
+    
+    async def get_user_by_email(self, email: str) -> Optional[User]:
+        """
+        Get a user by their email address.
         
-        # Hash the password
-        hashed_password = get_password_hash(user_data.password)
+        Args:
+            email: The user's email address
+            
+        Returns:
+            User object if found, None otherwise
+        """
+        user_id = email_to_user_id.get(email)
+        if user_id:
+            return users_store.get(user_id)
+        return None
+    
+    async def update_user_profile(self, user_id: str, profile_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Update a user's profile information.
         
-        # Create user record
-        user_record = {
-            "id": user_id_counter,
-            "email": email_lower,
-            "full_name": user_data.full_name,
-            "role": user_data.role,
-            "hashed_password": hashed_password,
-            "is_active": True,
-            "created_at": datetime.utcnow(),
-            "phone": None,
-            "location": None,
-            "bio": None
+        Args:
+            user_id: The user's unique identifier
+            profile_data: Updated profile data
+            
+        Returns:
+            Dict containing success status and updated user info
+            
+        Raises:
+            ValueError: If user not found or update fails
+        """
+        try:
+            if user_id not in users_store:
+                raise ValueError("User not found")
+            
+            user = users_store[user_id]
+            
+            # Update profile fields
+            for field, value in profile_data.items():
+                if hasattr(user.profile, field):
+                    setattr(user.profile, field, value)
+            
+            # Update timestamp
+            user.updated_at = datetime.utcnow()
+            
+            # Save changes
+            users_store[user_id] = user
+            
+            logger.info(f"Successfully updated profile for user {user_id}")
+            
+            # Create user output
+            user_out = UserOut(
+                _id=user_id,
+                email=user.email,
+                role=user.role,
+                profile=user.profile,
+                created_at=user.created_at,
+                updated_at=user.updated_at
+            )
+            
+            return {
+                "success": True,
+                "user": user_out,
+                "message": "Profile updated successfully"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error updating profile for user {user_id}: {str(e)}")
+            raise ValueError(f"Profile update failed: {str(e)}")
+    
+    async def deactivate_user(self, user_id: str) -> Dict[str, Any]:
+        """
+        Deactivate a user account.
+        
+        Args:
+            user_id: The user's unique identifier
+            
+        Returns:
+            Dict containing success status
+            
+        Raises:
+            ValueError: If user not found
+        """
+        try:
+            if user_id not in users_store:
+                raise ValueError("User not found")
+            
+            user = users_store[user_id]
+            user.is_active = False
+            user.updated_at = datetime.utcnow()
+            
+            users_store[user_id] = user
+            
+            logger.info(f"Successfully deactivated user {user_id}")
+            
+            return {
+                "success": True,
+                "message": "User account deactivated successfully"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error deactivating user {user_id}: {str(e)}")
+            raise ValueError(f"Account deactivation failed: {str(e)}")
+    
+    async def change_password(self, user_id: str, old_password: str, new_password: str) -> Dict[str, Any]:
+        """
+        Change a user's password.
+        
+        Args:
+            user_id: The user's unique identifier
+            old_password: Current password
+            new_password: New password
+            
+        Returns:
+            Dict containing success status
+            
+        Raises:
+            ValueError: If user not found or old password is incorrect
+        """
+        try:
+            if user_id not in users_store:
+                raise ValueError("User not found")
+            
+            user = users_store[user_id]
+            
+            # Verify old password
+            if not verify_password(old_password, user.hashed_password):
+                raise ValueError("Current password is incorrect")
+            
+            # Hash new password
+            new_hashed_password = get_password_hash(new_password)
+            
+            # Update password
+            user.hashed_password = new_hashed_password
+            user.updated_at = datetime.utcnow()
+            
+            users_store[user_id] = user
+            
+            logger.info(f"Successfully changed password for user {user_id}")
+            
+            return {
+                "success": True,
+                "message": "Password changed successfully"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error changing password for user {user_id}: {str(e)}")
+            raise ValueError(f"Password change failed: {str(e)}")
+    
+    async def verify_user_email(self, user_id: str) -> Dict[str, Any]:
+        """
+        Mark a user's email as verified.
+        
+        Args:
+            user_id: The user's unique identifier
+            
+        Returns:
+            Dict containing success status
+            
+        Raises:
+            ValueError: If user not found
+        """
+        try:
+            if user_id not in users_store:
+                raise ValueError("User not found")
+            
+            user = users_store[user_id]
+            user.is_verified = True
+            user.updated_at = datetime.utcnow()
+            
+            users_store[user_id] = user
+            
+            logger.info(f"Successfully verified email for user {user_id}")
+            
+            return {
+                "success": True,
+                "message": "Email verified successfully"
+            }
+            
+        except Exception as e:
+            logger.error(f"Error verifying email for user {user_id}: {str(e)}")
+            raise ValueError(f"Email verification failed: {str(e)}")
+    
+    async def get_user_stats(self) -> Dict[str, Any]:
+        """
+        Get overall user statistics.
+        
+        Returns:
+            Dict containing user statistics
+        """
+        total_users = len(users_store)
+        active_users = sum(1 for user in users_store.values() if user.is_active)
+        verified_users = sum(1 for user in users_store.values() if user.is_verified)
+        student_users = sum(1 for user in users_store.values() if user.role == "student")
+        employer_users = sum(1 for user in users_store.values() if user.role == "employer")
+        
+        return {
+            "total_users": total_users,
+            "active_users": active_users,
+            "verified_users": verified_users,
+            "student_users": student_users,
+            "employer_users": employer_users,
+            "verification_rate": (verified_users / total_users * 100) if total_users > 0 else 0
         }
-        
-        # Store user
-        users_db[email_lower] = user_record
-        user_id_counter += 1
-        
-        # Return user data without password
-        return {k: v for k, v in user_record.items() if k != "hashed_password"}
-    
-    @staticmethod
-    def authenticate_user(email: str, password: str) -> Optional[Dict[str, Any]]:
-        """
-        Authenticate user with email and password
-        
-        Args:
-            email (str): User email
-            password (str): Plain text password
-            
-        Returns:
-            dict or None: User data if authentication successful, None otherwise
-        """
-        user = AuthService.get_user_by_email(email)
-        
-        if not user:
-            return None
-        
-        if not user.get("is_active"):
-            return None
-        
-        if not verify_password(password, user["hashed_password"]):
-            return None
-        
-        # Return user data without password
-        return {k: v for k, v in user.items() if k != "hashed_password"}
-    
-    @staticmethod
-    def create_user_token(user: Dict[str, Any]) -> str:
-        """
-        Create access token for user
-        
-        Args:
-            user (dict): User data
-            
-        Returns:
-            str: JWT access token
-        """
-        token_data = {
-            "sub": user["email"],
-            "user_id": user["id"],
-            "role": user["role"]
-        }
-        return create_access_token(token_data)
-    
-    @staticmethod
-    def get_all_users() -> list:
-        """
-        Get all users (for development/testing purposes)
-        
-        Returns:
-            list: List of all users without passwords
-        """
-        return [
-            {k: v for k, v in user.items() if k != "hashed_password"}
-            for user in users_db.values()
-        ]
-    
-    @staticmethod
-    def update_user_status(email: str, is_active: bool) -> bool:
-        """
-        Update user active status
-        
-        Args:
-            email (str): User email
-            is_active (bool): New active status
-            
-        Returns:
-            bool: True if updated successfully, False if user not found
-        """
-        user = AuthService.get_user_by_email(email)
-        if user:
-            users_db[email.lower()]["is_active"] = is_active
-            return True
-        return False
-    
-    @staticmethod
-    def delete_user(email: str) -> bool:
-        """
-        Delete user (for development/testing purposes)
-        
-        Args:
-            email (str): User email
-            
-        Returns:
-            bool: True if deleted successfully, False if user not found
-        """
-        email_lower = email.lower()
-        if email_lower in users_db:
-            del users_db[email_lower]
-            return True
-        return False
-
-
-# Create some default users for testing
-def create_default_users():
-    """Create default users for testing purposes"""
-    try:
-        # Create admin/employer user
-        admin_user = UserCreate(
-            email="admin@jobportal.com",
-            full_name="Admin User",
-            role=UserRole.EMPLOYER,
-            password="admin123"
-        )
-        AuthService.create_user(admin_user)
-        
-        # Create job seeker user
-        job_seeker = UserCreate(
-            email="jobseeker@example.com",
-            full_name="John Doe",
-            role=UserRole.JOB_SEEKER,
-            password="jobseeker123"
-        )
-        AuthService.create_user(job_seeker)
-        
-        # Create counselor user
-        counselor = UserCreate(
-            email="counselor@jobportal.com",
-            full_name="Career Counselor",
-            role=UserRole.COUNSELOR,
-            password="counselor123"
-        )
-        AuthService.create_user(counselor)
-        
-        print("✅ Default users created successfully")
-        
-    except ValueError as e:
-        # Users already exist
-        print(f"ℹ️ Default users already exist: {e}")
-
-
-# Initialize default users
-create_default_users()

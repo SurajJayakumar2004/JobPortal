@@ -1,282 +1,395 @@
-from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordRequestForm
-from typing import Dict, Any
+"""
+Authentication router for user registration and login.
 
-from app.schemas import UserCreate, UserResponse, Token, APIResponse, UserRole
-from app.services.auth_service import AuthService
-from app.utils.dependencies import get_current_user, get_current_active_user, get_admin_user
+This module handles all authentication-related endpoints including
+user registration, login, token refresh, and logout functionality.
+"""
+
+from fastapi import APIRouter, HTTPException, status, Depends
+from typing import Dict, Any
+import uuid
+from datetime import datetime
+
+from app.schemas import (
+    UserCreate, UserLogin, UserOut, User, Token, UserProfile,
+    EmployerRegistration, StudentRegistration, UserRole,
+    SuccessResponse, ErrorResponse
+)
+from app.utils.security import (
+    verify_password, get_password_hash, create_token_response
+)
+from app.utils.dependencies import get_current_active_user, TokenData
 
 router = APIRouter()
 
+# In-memory user storage (replace with database in production)
+users_db: Dict[str, User] = {}
+users_by_email: Dict[str, str] = {}  # email -> user_id mapping
 
-@router.post("/register", response_model=APIResponse, status_code=status.HTTP_201_CREATED)
+
+@router.post("/register", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
 async def register_user(user_data: UserCreate):
     """
-    Register a new user
+    Register a new user account.
+    
+    This endpoint allows new users (students or employers) to create an account
+    by providing their email, password, role, and profile information.
     
     Args:
-        user_data (UserCreate): User registration data
+        user_data: User registration data including email, password, role, and profile
         
     Returns:
-        APIResponse: Success response with user data
+        Dict containing success message and user information
         
     Raises:
-        HTTPException: If user already exists or registration fails
+        HTTPException: If email already exists or validation fails
     """
-    try:
-        # Create the user
-        user = AuthService.create_user(user_data)
-        
-        return APIResponse(
-            success=True,
-            message="User registered successfully",
-            data={
-                "user": user,
-                "next_step": "Please login with your credentials"
-            }
-        )
-        
-    except ValueError as e:
+    # Check if user already exists
+    if user_data.email in users_by_email:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Registration failed. Please try again."
-        )
-
-
-@router.post("/token", response_model=Token)
-async def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends()):
-    """
-    OAuth2 compatible token login endpoint
-    
-    Args:
-        form_data (OAuth2PasswordRequestForm): Login form data with username and password
-        
-    Returns:
-        Token: Access token and token type
-        
-    Raises:
-        HTTPException: If authentication fails
-    """
-    # Authenticate user
-    user = AuthService.authenticate_user(form_data.username, form_data.password)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password",
-            headers={"WWW-Authenticate": "Bearer"},
+            detail="Email already registered"
         )
     
-    # Create access token
-    access_token = AuthService.create_user_token(user)
+    # Generate user ID and hash password
+    user_id = str(uuid.uuid4())
+    hashed_password = get_password_hash(user_data.password)
+    
+    # Create user object
+    user = User(
+        _id=user_id,
+        email=user_data.email,
+        hashed_password=hashed_password,
+        role=user_data.role,
+        profile=user_data.profile,
+        is_active=True,
+        is_verified=False,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    
+    # Store user in memory (replace with database operations)
+    users_db[user_id] = user
+    users_by_email[user_data.email] = user_id
+    
+    # Create response without sensitive data
+    user_out = UserOut(
+        _id=user_id,
+        email=user.email,
+        role=user.role,
+        profile=user.profile,
+        created_at=user.created_at,
+        updated_at=user.updated_at
+    )
     
     return {
-        "access_token": access_token,
-        "token_type": "bearer"
+        "success": True,
+        "message": "User registered successfully",
+        "data": {
+            "user": user_out.dict(),
+            "next_steps": [
+                "Verify your email address",
+                "Complete your profile",
+                "Upload your resume" if user_data.role == "student" else "Set up your company profile"
+            ]
+        }
     }
 
 
-@router.post("/login", response_model=APIResponse)
-async def login_user(form_data: OAuth2PasswordRequestForm = Depends()):
+@router.post("/register/employer", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+async def register_employer(employer_data: EmployerRegistration):
     """
-    User login endpoint (alternative to /token with more detailed response)
+    Register a new employer account with organization details.
+    
+    This endpoint allows employers to create an account with their organization
+    information including full name, organization name, organization email, and phone.
     
     Args:
-        form_data (OAuth2PasswordRequestForm): Login form data
+        employer_data: Employer registration data
         
     Returns:
-        APIResponse: Success response with token and user data
+        Dict containing success message and user information
         
     Raises:
-        HTTPException: If authentication fails
+        HTTPException: If email already exists or validation fails
     """
-    # Authenticate user
-    user = AuthService.authenticate_user(form_data.username, form_data.password)
+    # Check if user already exists by organization email
+    if employer_data.organization_email in users_by_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organization email already registered"
+        )
     
-    if not user:
+    # Generate user ID and hash password
+    user_id = str(uuid.uuid4())
+    hashed_password = get_password_hash(employer_data.password)
+    
+    # Create user profile with employer-specific data
+    profile = UserProfile(
+        name=employer_data.full_name,
+        phone=employer_data.phone_number,
+        organization_name=employer_data.organization_name,
+        organization_email=employer_data.organization_email
+    )
+    
+    # Create user object
+    user = User(
+        _id=user_id,
+        email=employer_data.organization_email,
+        hashed_password=hashed_password,
+        role=UserRole.EMPLOYER,
+        profile=profile,
+        is_active=True,
+        is_verified=False,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    
+    # Store user in memory (replace with database operations)
+    users_db[user_id] = user
+    users_by_email[employer_data.organization_email] = user_id
+    
+    # Create response without sensitive data
+    user_out = UserOut(
+        _id=user_id,
+        email=user.email,
+        role=user.role,
+        profile=user.profile,
+        created_at=user.created_at,
+        updated_at=user.updated_at
+    )
+    
+    return {
+        "success": True,
+        "message": "Employer account registered successfully",
+        "data": {
+            "user": user_out.dict(),
+            "next_steps": [
+                "Verify your organization email address",
+                "Complete your company profile",
+                "Start posting job opportunities"
+            ]
+        }
+    }
+
+
+@router.post("/register/student", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
+async def register_student(student_data: StudentRegistration):
+    """
+    Register a new student account.
+    
+    This endpoint allows students to create an account with their personal
+    information including full name, email, and phone number.
+    
+    Args:
+        student_data: Student registration data
+        
+    Returns:
+        Dict containing success message and user information
+        
+    Raises:
+        HTTPException: If email already exists or validation fails
+    """
+    # Check if user already exists
+    if student_data.email in users_by_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Generate user ID and hash password
+    user_id = str(uuid.uuid4())
+    hashed_password = get_password_hash(student_data.password)
+    
+    # Create user profile
+    profile = UserProfile(
+        name=student_data.full_name,
+        phone=student_data.phone_number
+    )
+    
+    # Create user object
+    user = User(
+        _id=user_id,
+        email=student_data.email,
+        hashed_password=hashed_password,
+        role=UserRole.STUDENT,
+        profile=profile,
+        is_active=True,
+        is_verified=False,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow()
+    )
+    
+    # Store user in memory (replace with database operations)
+    users_db[user_id] = user
+    users_by_email[student_data.email] = user_id
+    
+    # Create response without sensitive data
+    user_out = UserOut(
+        _id=user_id,
+        email=user.email,
+        role=user.role,
+        profile=user.profile,
+        created_at=user.created_at,
+        updated_at=user.updated_at
+    )
+    
+    return {
+        "success": True,
+        "message": "Student account registered successfully",
+        "data": {
+            "user": user_out.dict(),
+            "next_steps": [
+                "Verify your email address",
+                "Complete your profile",
+                "Upload your resume"
+            ]
+        }
+    }
+
+
+@router.post("/login", response_model=Dict[str, Any])
+async def login_user(login_data: UserLogin):
+    """
+    Authenticate user and return access token.
+    
+    This endpoint authenticates users with their email and password,
+    returning a JWT access token for subsequent API calls.
+    
+    Args:
+        login_data: User login credentials (email and password)
+        
+    Returns:
+        Dict containing access token and user information
+        
+    Raises:
+        HTTPException: If credentials are invalid
+    """
+    # Check if user exists
+    if login_data.email not in users_by_email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect email or password"
+            detail="Invalid email or password"
         )
     
-    # Create access token
-    access_token = AuthService.create_user_token(user)
+    user_id = users_by_email[login_data.email]
+    user = users_db[user_id]
     
-    return APIResponse(
-        success=True,
-        message="Login successful",
-        data={
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": {
-                "id": user["id"],
-                "email": user["email"],
-                "full_name": user["full_name"],
-                "role": user["role"]
-            }
-        }
-    )
-
-
-@router.get("/me", response_model=UserResponse)
-async def read_users_me(current_user: Dict[str, Any] = Depends(get_current_active_user)):
-    """
-    Get current user information
+    # Verify password
+    if not verify_password(login_data.password, user.hashed_password):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid email or password"
+        )
     
-    Args:
-        current_user: Current authenticated user
-        
-    Returns:
-        UserResponse: Current user data
-    """
-    return current_user
+    # Check if user is active
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Account is deactivated"
+        )
+    
+    # Create token response
+    token_response = create_token_response(user_id, user.email, user.role)
+    
+    return {
+        "success": True,
+        "message": "Login successful",
+        "data": token_response
+    }
 
 
-@router.get("/verify-token", response_model=APIResponse)
-async def verify_token(current_user: Dict[str, Any] = Depends(get_current_user)):
+@router.post("/logout", response_model=SuccessResponse)
+async def logout_user(current_user: TokenData = Depends(get_current_active_user)):
     """
-    Verify if the current token is valid
+    Logout the current user.
+    
+    In a stateless JWT implementation, logout is typically handled client-side
+    by removing the token. This endpoint can be used for logging purposes
+    or token blacklisting in more advanced implementations.
     
     Args:
         current_user: Current authenticated user
         
     Returns:
-        APIResponse: Token verification result
+        Success response confirming logout
     """
-    return APIResponse(
-        success=True,
-        message="Token is valid",
-        data={
-            "user": {
-                "id": current_user["id"],
-                "email": current_user["email"],
-                "full_name": current_user["full_name"],
-                "role": current_user["role"],
-                "is_active": current_user["is_active"]
-            }
-        }
+    # In a production app, you might:
+    # 1. Add token to blacklist
+    # 2. Log the logout event
+    # 3. Clear any server-side sessions
+    
+    return SuccessResponse(
+        message=f"User {current_user.email} logged out successfully"
     )
 
 
-@router.post("/logout", response_model=APIResponse)
-async def logout_user(current_user: Dict[str, Any] = Depends(get_current_user)):
+@router.post("/refresh-token", response_model=Dict[str, Any])
+async def refresh_token(current_user: TokenData = Depends(get_current_active_user)):
     """
-    Logout user (token invalidation would be handled client-side or with token blacklisting)
+    Refresh the access token for the current user.
+    
+    This endpoint allows users to get a new access token using their
+    current valid token, extending their session.
     
     Args:
         current_user: Current authenticated user
         
     Returns:
-        APIResponse: Logout confirmation
+        Dict containing new access token
     """
-    return APIResponse(
-        success=True,
-        message="Logged out successfully",
-        data={
-            "message": "Please remove the token from client storage"
-        }
+    # Create new token response
+    token_response = create_token_response(
+        current_user.user_id, 
+        current_user.email, 
+        current_user.role
     )
+    
+    return {
+        "success": True,
+        "message": "Token refreshed successfully",
+        "data": token_response
+    }
 
 
-# Admin endpoints for user management
-@router.get("/users", response_model=APIResponse)
-async def list_all_users(admin_user: Dict[str, Any] = Depends(get_admin_user)):
+@router.get("/me", response_model=Dict[str, Any])
+async def get_current_user_info(current_user: TokenData = Depends(get_current_active_user)):
     """
-    List all users (admin only)
+    Get information about the currently authenticated user.
+    
+    This endpoint returns the current user's profile information
+    and account details.
     
     Args:
-        admin_user: Current admin user
+        current_user: Current authenticated user
         
     Returns:
-        APIResponse: List of all users
-    """
-    users = AuthService.get_all_users()
-    
-    return APIResponse(
-        success=True,
-        message=f"Retrieved {len(users)} users",
-        data={
-            "users": users,
-            "total_count": len(users)
-        }
-    )
-
-
-@router.put("/users/{user_email}/status", response_model=APIResponse)
-async def update_user_status(
-    user_email: str,
-    is_active: bool,
-    admin_user: Dict[str, Any] = Depends(get_admin_user)
-):
-    """
-    Update user active status (admin only)
-    
-    Args:
-        user_email (str): Email of user to update
-        is_active (bool): New active status
-        admin_user: Current admin user
-        
-    Returns:
-        APIResponse: Update confirmation
+        Dict containing user information
         
     Raises:
         HTTPException: If user not found
     """
-    success = AuthService.update_user_status(user_email, is_active)
-    
-    if not success:
+    # Get user from database
+    if current_user.user_id not in users_db:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="User not found"
         )
     
-    action = "activated" if is_active else "deactivated"
-    return APIResponse(
-        success=True,
-        message=f"User {user_email} has been {action}",
-        data={
-            "user_email": user_email,
-            "is_active": is_active
-        }
+    user = users_db[current_user.user_id]
+    
+    # Create response without sensitive data
+    user_out = UserOut(
+        _id=current_user.user_id,
+        email=user.email,
+        role=user.role,
+        profile=user.profile,
+        created_at=user.created_at,
+        updated_at=user.updated_at
     )
-
-
-# Development/Testing endpoints
-@router.delete("/users/{user_email}", response_model=APIResponse)
-async def delete_user(
-    user_email: str,
-    admin_user: Dict[str, Any] = Depends(get_admin_user)
-):
-    """
-    Delete a user (admin only, for development/testing)
     
-    Args:
-        user_email (str): Email of user to delete
-        admin_user: Current admin user
-        
-    Returns:
-        APIResponse: Deletion confirmation
-        
-    Raises:
-        HTTPException: If user not found
-    """
-    success = AuthService.delete_user(user_email)
-    
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
-        )
-    
-    return APIResponse(
-        success=True,
-        message=f"User {user_email} has been deleted",
-        data={
-            "deleted_user_email": user_email
-        }
-    )
+    return {
+        "success": True,
+        "message": "User information retrieved successfully",
+        "data": {"user": user_out.dict()}
+    }

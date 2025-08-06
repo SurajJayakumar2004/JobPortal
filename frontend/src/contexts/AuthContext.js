@@ -1,5 +1,10 @@
+/**
+ * Authentication context for managing user authentication state
+ * throughout the application.
+ */
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import api from '../services/api';
+import { userAPI } from '../services/api';
 
 const AuthContext = createContext();
 
@@ -14,69 +19,64 @@ export const useAuth = () => {
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
 
+  // Check if user is authenticated on app load
   useEffect(() => {
     const token = localStorage.getItem('token');
-    const userData = localStorage.getItem('user');
-    
-    if (token && userData) {
-      setUser(JSON.parse(userData));
+    if (token) {
+      // Verify token and get user profile
+      fetchUserProfile();
+    } else {
+      setLoading(false);
     }
-    setLoading(false);
   }, []);
 
-  const login = async (email, password) => {
+  /**
+   * Fetch user profile data from API
+   */
+  const fetchUserProfile = async () => {
     try {
-      const formData = new URLSearchParams();
-      formData.append('username', email);
-      formData.append('password', password);
-      
-      const response = await api.post('/auth/login', formData, {
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      });
-      
-      if (response.data.success) {
-        const { access_token, user: userData } = response.data.data;
-        localStorage.setItem('token', access_token);
-        localStorage.setItem('user', JSON.stringify(userData));
-        setUser(userData);
-        return { success: true };
-      }
+      const response = await userAPI.getProfile();
+      const { data } = response.data; // Backend wraps response in { success: true, data: {...} }
+      setUser(data.user);
+      setIsAuthenticated(true);
     } catch (error) {
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Login failed' 
-      };
+      console.error('Failed to fetch user profile:', error);
+      localStorage.removeItem('token');
+      setIsAuthenticated(false);
+    } finally {
+      setLoading(false);
     }
   };
 
+  /**
+   * Login user and store authentication token
+   * @param {string} token - JWT token from login response
+   * @param {Object} userData - User data from login response
+   */
+  const login = (token, userData) => {
+    localStorage.setItem('token', token);
+    setUser(userData);
+    setIsAuthenticated(true);
+  };
+
+  /**
+   * Logout user and clear authentication data
+   */
   const logout = () => {
     localStorage.removeItem('token');
-    localStorage.removeItem('user');
     setUser(null);
-  };
-
-  const register = async (userData) => {
-    try {
-      const response = await api.post('/auth/register', userData);
-      return { success: true, data: response.data };
-    } catch (error) {
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Registration failed' 
-      };
-    }
+    setIsAuthenticated(false);
   };
 
   const value = {
     user,
+    loading,
+    isAuthenticated,
     login,
     logout,
-    register,
-    loading,
-    isAuthenticated: !!user,
+    fetchUserProfile,
   };
 
   return (

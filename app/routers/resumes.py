@@ -1,299 +1,421 @@
 """
-Resume management endpoints for file upload, parsing, and analysis.
-Includes AI-powered resume parsing and skill extraction.
+Resume management router for file upload and processing.
+
+This module handles all resume-related endpoints including file upload,
+parsing, AI feedback generation, and resume management functionality.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, status
-from fastapi.security import HTTPBearer
-from app.schemas import ResumeCreate, ResumeResponse, UserResponse, APIResponse, UserRole
-from app.utils.dependencies import get_current_user
-from app.services.resume_parser import resume_parser
-from app.config import app_data
-import os
+from fastapi import APIRouter, HTTPException, status, Depends, UploadFile, File, Form
+from typing import Dict, Any, List
 import uuid
-from pathlib import Path
+import os
+from datetime import datetime
 import logging
 
-router = APIRouter(prefix="/resumes", tags=["resumes"])
-security = HTTPBearer()
+from app.schemas import (
+    ResumeOut, ResumeCreate, Resume, SuccessResponse,
+    AIFeedback, ParsedResumeSection, UserRole
+)
+from app.services.resume_parser import ResumeParserService
+from app.utils.dependencies import get_current_active_user, require_student, TokenData
+from app.config import settings
+
+router = APIRouter()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-UPLOAD_DIR = Path("uploads/resumes")
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+# In-memory storage for resumes (replace with database in production)
+resumes_db: Dict[str, Resume] = {}
+user_resumes: Dict[str, List[str]] = {}  # user_id -> [resume_ids]
 
-ALLOWED_EXTENSIONS = {".pdf", ".doc", ".docx"}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
+# Initialize resume parser service
+resume_parser = ResumeParserService()
 
-# Global counter for resume IDs (in production, use database auto-increment)
-resume_id_counter = 1
 
-def validate_file(file: UploadFile) -> None:
-    """Validate uploaded file."""
-    if not file.filename:
-        raise HTTPException(status_code=400, detail="No file provided")
-    
-    file_extension = Path(file.filename).suffix.lower()
-    if file_extension not in ALLOWED_EXTENSIONS:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"File type not allowed. Supported formats: {', '.join(ALLOWED_EXTENSIONS)}"
-        )
-
-@router.post("/upload", response_model=APIResponse)
+@router.post("/upload", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
 async def upload_resume(
     file: UploadFile = File(...),
-    current_user: dict = Depends(get_current_user)
+    current_user: TokenData = Depends(require_student())
 ):
-    """Upload and parse a resume file with AI-powered analysis."""
-    global resume_id_counter
+    """
+    Upload and parse a resume file.
+    
+    This endpoint allows students to upload their resume files (PDF or DOCX),
+    automatically parses the content using AI, and provides detailed feedback
+    on resume quality, ATS compatibility, and skill analysis.
+    
+    Args:
+        file: The resume file to upload (PDF or DOCX)
+        current_user: Current authenticated student user
+        
+    Returns:
+        Dict containing upload status and parsing results
+        
+    Raises:
+        HTTPException: If file validation fails or processing errors occur
+    """
+    # Validate file type
+    if not file.filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No file provided"
+        )
+    
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    if file_ext not in settings.allowed_file_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type {file_ext} not allowed. Allowed types: {', '.join(settings.allowed_file_types)}"
+        )
+    
+    # Validate file size
+    content = await file.read()
+    if len(content) > settings.max_file_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File size exceeds maximum allowed size of {settings.max_file_size / (1024*1024):.1f}MB"
+        )
+    
+    # Reset file pointer for processing
+    await file.seek(0)
     
     try:
-        # Validate user role
-        if current_user.get("role") != UserRole.JOB_SEEKER:
-            raise HTTPException(
-                status_code=403, 
-                detail="Only job seekers can upload resumes"
-            )
+        # Save uploaded file
+        file_path = await resume_parser.save_uploaded_file(content, file.filename)
         
-        # Validate file
-        validate_file(file)
-        file_extension = Path(file.filename).suffix.lower()
+        # Generate unique resume ID
+        resume_id = str(uuid.uuid4())
         
-        # Check file size
-        content = await file.read()
-        if len(content) > MAX_FILE_SIZE:
-            raise HTTPException(
-                status_code=413, 
-                detail=f"File too large. Maximum size: {MAX_FILE_SIZE // (1024*1024)}MB"
-            )
-        
-        # Reset file position for saving
-        await file.seek(0)
-        
-        # Generate unique filename
-        unique_filename = f"{uuid.uuid4()}{file_extension}"
-        file_path = UPLOAD_DIR / unique_filename
-        
-        # Save file
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
-        
-        # Parse resume using AI
-        parsing_result = resume_parser.parse_resume(str(file_path))
-        
-        # Create resume record
-        resume_data = {
-            "id": resume_id_counter,
-            "user_id": current_user["id"],
-            "original_filename": file.filename,
-            "stored_filename": unique_filename,
-            "file_path": str(file_path),
-            "file_size": len(content),
-            "content_type": file.content_type,
-            "parsing_result": parsing_result,
-            "upload_timestamp": "2024-01-01T00:00:00Z"  # In production, use actual timestamp
-        }
-        
-        resume_id_counter += 1
-        
-        # Store in app data
-        app_data["resumes"].append(resume_data)
-        
-        return APIResponse(
-            success=True,
-            message="Resume uploaded and parsed successfully",
-            data={
-                "resume_id": resume_data["id"],
-                "parsing_success": parsing_result.get("success", False),
-                "skills_found": parsing_result.get("total_skills", 0),
-                "skill_score": parsing_result.get("skill_score", 0),
-                "contact_info": parsing_result.get("contact_info", {}),
-                "experience_years": parsing_result.get("experience_years"),
-                "education_count": len(parsing_result.get("education", [])),
-                "file_info": {
-                    "original_name": file.filename,
-                    "size_mb": round(len(content) / (1024*1024), 2),
-                    "format": file_extension.upper()
-                }
-            }
+        # Create initial resume record
+        resume = Resume(
+            _id=resume_id,
+            user_id=current_user.user_id,
+            filename=file.filename,
+            original_file_url=file_path,
+            upload_date=datetime.utcnow(),
+            processing_status="processing"
         )
         
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error uploading resume: {str(e)}")
-        # Clean up file if it was created
-        if 'file_path' in locals() and file_path.exists():
-            file_path.unlink()
-        raise HTTPException(status_code=500, detail="Failed to process resume")
-
-@router.get("/", response_model=APIResponse)
-async def get_user_resumes(current_user: dict = Depends(get_current_user)):
-    """Get all resumes for the current user."""
-    user_resumes = [
-        resume for resume in app_data["resumes"] 
-        if resume["user_id"] == current_user["id"]
-    ]
-    
-    # Format response data
-    formatted_resumes = []
-    for resume in user_resumes:
-        parsing_result = resume.get("parsing_result", {})
-        formatted_resumes.append({
-            "id": resume["id"],
-            "original_filename": resume["original_filename"],
-            "upload_timestamp": resume["upload_timestamp"],
-            "file_size_mb": round(resume["file_size"] / (1024*1024), 2),
-            "parsing_success": parsing_result.get("success", False),
-            "skill_score": parsing_result.get("skill_score", 0),
-            "total_skills": parsing_result.get("total_skills", 0),
-            "experience_years": parsing_result.get("experience_years"),
-            "contact_info": parsing_result.get("contact_info", {}),
-            "education_count": len(parsing_result.get("education", []))
-        })
-    
-    return APIResponse(
-        success=True,
-        message=f"Found {len(formatted_resumes)} resumes",
-        data=formatted_resumes
-    )
-
-@router.get("/{resume_id}/analysis", response_model=APIResponse)
-async def get_resume_analysis(
-    resume_id: int, 
-    current_user: dict = Depends(get_current_user)
-):
-    """Get detailed analysis of a specific resume."""
-    resume = next(
-        (r for r in app_data["resumes"] if r["id"] == resume_id), 
-        None
-    )
-    
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
-    
-    # Check ownership
-    if resume["user_id"] != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
-    
-    parsing_result = resume.get("parsing_result", {})
-    
-    return APIResponse(
-        success=True,
-        message="Resume analysis retrieved successfully",
-        data={
-            "resume_info": {
-                "id": resume["id"],
-                "filename": resume["original_filename"],
-                "upload_date": resume["upload_timestamp"]
-            },
-            "parsing_result": parsing_result,
-            "analysis_summary": {
-                "overall_score": parsing_result.get("skill_score", 0),
-                "strengths": _analyze_strengths(parsing_result),
-                "improvement_areas": _analyze_improvements(parsing_result),
-                "keyword_density": _calculate_keyword_density(parsing_result)
+        # Store in database
+        resumes_db[resume_id] = resume
+        
+        # Update user's resume list
+        if current_user.user_id not in user_resumes:
+            user_resumes[current_user.user_id] = []
+        user_resumes[current_user.user_id].append(resume_id)
+        
+        # Process resume asynchronously (in production, use background tasks)
+        try:
+            parsing_result = await resume_parser.parse_resume_file(file_path, file.filename)
+            
+            # Update resume with parsing results
+            resume.parsed_text = parsing_result.get('parsed_text')
+            resume.parsed_sections = parsing_result.get('parsed_sections')
+            resume.ai_feedback = parsing_result.get('ai_feedback')
+            resume.processing_status = parsing_result.get('processing_status', 'completed')
+            
+            # Update in database
+            resumes_db[resume_id] = resume
+            
+            logger.info(f"Successfully processed resume {resume_id} for user {current_user.user_id}")
+            
+        except Exception as e:
+            logger.error(f"Error processing resume {resume_id}: {str(e)}")
+            resume.processing_status = "failed"
+            resumes_db[resume_id] = resume
+        
+        # Create response
+        resume_out = ResumeOut(
+            _id=resume_id,
+            user_id=current_user.user_id,
+            filename=file.filename,
+            upload_date=resume.upload_date,
+            file_url=file_path,
+            parsed_sections=resume.parsed_sections,
+            ai_feedback=resume.ai_feedback,
+            processing_status=resume.processing_status
+        )
+        
+        return {
+            "success": True,
+            "message": "Resume uploaded and processed successfully",
+            "data": {
+                "resume": resume_out.dict(),
+                "processing_time": "< 1 minute",
+                "next_steps": [
+                    "Review AI feedback and suggestions",
+                    "Update your profile with extracted skills",
+                    "Apply to relevant job postings"
+                ]
             }
         }
-    )
+        
+    except Exception as e:
+        logger.error(f"Error uploading resume for user {current_user.user_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error processing resume: {str(e)}"
+        )
 
-@router.delete("/{resume_id}", response_model=APIResponse)
-async def delete_resume(
-    resume_id: int, 
-    current_user: dict = Depends(get_current_user)
+
+@router.get("/{resume_id}/feedback", response_model=Dict[str, Any])
+async def get_resume_feedback(
+    resume_id: str,
+    current_user: TokenData = Depends(get_current_active_user)
 ):
-    """Delete a resume file and its data."""
-    resume = next(
-        (r for r in app_data["resumes"] if r["id"] == resume_id), 
-        None
-    )
+    """
+    Get AI feedback for a specific resume.
     
-    if not resume:
-        raise HTTPException(status_code=404, detail="Resume not found")
+    This endpoint returns detailed AI analysis and feedback for a resume,
+    including ATS compatibility score, formatting suggestions, and skill analysis.
+    
+    Args:
+        resume_id: The ID of the resume to get feedback for
+        current_user: Current authenticated user
+        
+    Returns:
+        Dict containing detailed AI feedback and analysis
+        
+    Raises:
+        HTTPException: If resume not found or access denied
+    """
+    # Check if resume exists
+    if resume_id not in resumes_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Resume not found"
+        )
+    
+    resume = resumes_db[resume_id]
+    
+    # Check ownership (students can only access their own resumes, employers can access applied resumes)
+    if (current_user.role == UserRole.STUDENT and resume.user_id != current_user.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this resume"
+        )
+    
+    # Check if processing is complete
+    if resume.processing_status == "processing":
+        return {
+            "success": True,
+            "message": "Resume is still being processed",
+            "data": {
+                "status": "processing",
+                "estimated_completion": "< 1 minute"
+            }
+        }
+    
+    if resume.processing_status == "failed":
+        return {
+            "success": False,
+            "message": "Resume processing failed",
+            "data": {
+                "status": "failed",
+                "error": "Unable to process resume file"
+            }
+        }
+    
+    if not resume.ai_feedback:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No feedback available for this resume"
+        )
+    
+    return {
+        "success": True,
+        "message": "Resume feedback retrieved successfully",
+        "data": {
+            "resume_id": resume_id,
+            "feedback": resume.ai_feedback.dict(),
+            "parsed_sections": resume.parsed_sections.dict() if resume.parsed_sections else None,
+            "processing_date": resume.upload_date.isoformat(),
+            "recommendations": _generate_action_items(resume.ai_feedback)
+        }
+    }
+
+
+@router.get("/{resume_id}/parsed", response_model=Dict[str, Any])
+async def get_parsed_resume(
+    resume_id: str,
+    current_user: TokenData = Depends(get_current_active_user)
+):
+    """
+    Get parsed resume sections and extracted information.
+    
+    Args:
+        resume_id: The ID of the resume to get parsed data for
+        current_user: Current authenticated user
+        
+    Returns:
+        Dict containing parsed resume sections and metadata
+        
+    Raises:
+        HTTPException: If resume not found or access denied
+    """
+    # Check if resume exists
+    if resume_id not in resumes_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Resume not found"
+        )
+    
+    resume = resumes_db[resume_id]
     
     # Check ownership
-    if resume["user_id"] != current_user["id"]:
-        raise HTTPException(status_code=403, detail="Access denied")
+    if (current_user.role == UserRole.STUDENT and resume.user_id != current_user.user_id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this resume"
+        )
+    
+    return {
+        "success": True,
+        "message": "Parsed resume data retrieved successfully",
+        "data": {
+            "resume_id": resume_id,
+            "filename": resume.filename,
+            "upload_date": resume.upload_date.isoformat(),
+            "parsed_sections": resume.parsed_sections.dict() if resume.parsed_sections else None,
+            "processing_status": resume.processing_status,
+            "text_length": len(resume.parsed_text) if resume.parsed_text else 0
+        }
+    }
+
+
+@router.get("/", response_model=Dict[str, Any])
+async def get_user_resumes(
+    current_user: TokenData = Depends(require_student())
+):
+    """
+    Get all resumes for the current user.
+    
+    Args:
+        current_user: Current authenticated student user
+        
+    Returns:
+        Dict containing list of user's resumes
+    """
+    user_resume_ids = user_resumes.get(current_user.user_id, [])
+    
+    if not user_resume_ids:
+        return {
+            "success": True,
+            "message": "No resumes found",
+            "data": {
+                "resumes": [],
+                "total": 0
+            }
+        }
+    
+    # Get resume details
+    user_resume_list = []
+    for resume_id in user_resume_ids:
+        if resume_id in resumes_db:
+            resume = resumes_db[resume_id]
+            resume_out = ResumeOut(
+                _id=resume_id,
+                user_id=resume.user_id,
+                filename=resume.filename,
+                upload_date=resume.upload_date,
+                file_url=resume.original_file_url,
+                parsed_sections=resume.parsed_sections,
+                ai_feedback=resume.ai_feedback,
+                processing_status=resume.processing_status
+            )
+            user_resume_list.append(resume_out.dict())
+    
+    return {
+        "success": True,
+        "message": f"Found {len(user_resume_list)} resumes",
+        "data": {
+            "resumes": user_resume_list,
+            "total": len(user_resume_list)
+        }
+    }
+
+
+@router.delete("/{resume_id}", response_model=SuccessResponse)
+async def delete_resume(
+    resume_id: str,
+    current_user: TokenData = Depends(require_student())
+):
+    """
+    Delete a resume.
+    
+    Args:
+        resume_id: The ID of the resume to delete
+        current_user: Current authenticated student user
+        
+    Returns:
+        Success response confirming deletion
+        
+    Raises:
+        HTTPException: If resume not found or access denied
+    """
+    # Check if resume exists
+    if resume_id not in resumes_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Resume not found"
+        )
+    
+    resume = resumes_db[resume_id]
+    
+    # Check ownership
+    if resume.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied to this resume"
+        )
     
     try:
-        # Delete file from filesystem
-        file_path = Path(resume["file_path"])
-        if file_path.exists():
-            file_path.unlink()
+        # Delete file from storage
+        if os.path.exists(resume.original_file_url):
+            os.remove(resume.original_file_url)
         
-        # Remove from app data
-        app_data["resumes"] = [
-            r for r in app_data["resumes"] if r["id"] != resume_id
-        ]
+        # Remove from database
+        del resumes_db[resume_id]
         
-        return APIResponse(
-            success=True,
-            message="Resume deleted successfully",
-            data={"deleted_resume_id": resume_id}
+        # Remove from user's resume list
+        if current_user.user_id in user_resumes:
+            user_resumes[current_user.user_id] = [
+                rid for rid in user_resumes[current_user.user_id] 
+                if rid != resume_id
+            ]
+        
+        logger.info(f"Successfully deleted resume {resume_id} for user {current_user.user_id}")
+        
+        return SuccessResponse(
+            message="Resume deleted successfully"
         )
         
     except Exception as e:
         logger.error(f"Error deleting resume {resume_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to delete resume")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error deleting resume"
+        )
 
-def _analyze_strengths(parsing_result: dict) -> list:
-    """Analyze resume strengths based on parsing results."""
-    strengths = []
-    
-    if parsing_result.get("skill_score", 0) > 70:
-        strengths.append("Strong technical skill set")
-    
-    if parsing_result.get("experience_years", 0) > 3:
-        strengths.append("Good professional experience")
-    
-    if len(parsing_result.get("education", [])) > 0:
-        strengths.append("Solid educational background")
-    
-    contact_info = parsing_result.get("contact_info", {})
-    if contact_info.get("linkedin") or contact_info.get("github"):
-        strengths.append("Professional online presence")
-    
-    sentiment = parsing_result.get("sentiment", {})
-    if sentiment.get("polarity", 0) > 0.1:
-        strengths.append("Positive language and tone")
-    
-    return strengths if strengths else ["Areas for improvement identified"]
 
-def _analyze_improvements(parsing_result: dict) -> list:
-    """Analyze areas for resume improvement."""
-    improvements = []
+def _generate_action_items(feedback: AIFeedback) -> List[str]:
+    """Generate actionable recommendations based on AI feedback."""
+    action_items = []
     
-    if parsing_result.get("skill_score", 0) < 50:
-        improvements.append("Add more relevant technical skills")
+    if feedback.ats_score < 70:
+        action_items.append("Improve ATS compatibility by using standard section headers")
     
-    contact_info = parsing_result.get("contact_info", {})
-    if not contact_info.get("email"):
-        improvements.append("Include professional email address")
+    if feedback.formatting_score < 70:
+        action_items.append("Enhance formatting with consistent bullet points and structure")
     
-    if not contact_info.get("linkedin"):
-        improvements.append("Add LinkedIn profile")
+    if feedback.completeness_score < 80:
+        action_items.append("Add missing sections to make your resume more comprehensive")
     
-    if len(parsing_result.get("education", [])) == 0:
-        improvements.append("Include educational background")
+    if len(feedback.skill_gaps) > 3:
+        action_items.append("Consider learning high-demand skills to improve job prospects")
     
-    if parsing_result.get("experience_years") is None:
-        improvements.append("Clearly state years of experience")
+    action_items.extend(feedback.suggestions[:3])  # Add top 3 suggestions
     
-    return improvements if improvements else ["Resume looks comprehensive"]
-
-def _calculate_keyword_density(parsing_result: dict) -> dict:
-    """Calculate keyword density for different skill categories."""
-    skills = parsing_result.get("skills", {})
-    total_skills = sum(len(skill_list) for skill_list in skills.values())
-    
-    if total_skills == 0:
-        return {}
-    
-    density = {}
-    for category, skill_list in skills.items():
-        density[category] = {
-            "count": len(skill_list),
-            "percentage": round((len(skill_list) / total_skills) * 100, 1)
-        }
-    
-    return density
+    return action_items[:5]  # Return top 5 action items

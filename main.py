@@ -1,70 +1,135 @@
-from fastapi import FastAPI
+"""
+Main FastAPI application entry point for the AI-Powered Job Portal.
+
+This file initializes the FastAPI application, configures middleware,
+includes all routers, and sets up the basic application structure.
+"""
+
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-import os
+from fastapi.responses import JSONResponse
+import uvicorn
+from contextlib import asynccontextmanager
 
-from app.config import settings, create_upload_directory
-from app.routers import auth, jobs, applications, resumes, employers, counseling
+from app.routers import auth, resumes, jobs, applications, counseling, employers
+from app.config import settings
 
-# Create upload directory on startup
-create_upload_directory()
+# Lifespan context manager for startup/shutdown events
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Handle application startup and shutdown events.
+    """
+    # Startup
+    print("🚀 Starting AI-Powered Job Portal...")
+    print("📊 Initializing AI models...")
+    
+    # Here you would typically initialize:
+    # - Database connections
+    # - ML models
+    # - Cache connections
+    # - External service clients
+    
+    yield
+    
+    # Shutdown
+    print("🛑 Shutting down Job Portal...")
 
-# Initialize FastAPI app
+# Initialize FastAPI application
 app = FastAPI(
-    title=settings.app_name,
-    version=settings.app_version,
-    description="A comprehensive job portal with AI-based resume screening and career counseling",
-    debug=settings.debug
+    title="AI-Powered Job Portal API",
+    description="A comprehensive backend API for an intelligent job portal with AI-driven resume screening, job matching, and career counseling.",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
-# Add CORS middleware
+# Configure CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
+    allow_origins=["http://localhost:3000", "http://localhost:8080"],  # Frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount static files (for serving uploaded files)
-if os.path.exists(settings.upload_dir):
-    app.mount("/uploads", StaticFiles(directory=settings.upload_dir), name="uploads")
-
 # Include routers
-app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
-app.include_router(applications.router, prefix="/api/applications", tags=["Applications"])
-app.include_router(resumes.router, prefix="/api/resumes", tags=["Resumes"])
-app.include_router(employers.router, prefix="/api/employers", tags=["Employers"])
-app.include_router(counseling.router, prefix="/api/counseling", tags=["Counseling"])
+app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+app.include_router(resumes.router, prefix="/resumes", tags=["Resumes"])
+app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
+app.include_router(applications.router, prefix="/applications", tags=["Applications"])
+app.include_router(counseling.router, prefix="/counseling", tags=["Career Counseling"])
+app.include_router(employers.router, prefix="/employers", tags=["Employers"])
 
-
+# Root endpoint
 @app.get("/")
 async def root():
-    """Health check endpoint"""
+    """
+    Root endpoint providing basic API information.
+    """
     return {
-        "message": f"Welcome to {settings.app_name} v{settings.app_version}",
-        "status": "running",
-        "docs": "/docs"
+        "message": "Welcome to AI-Powered Job Portal API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
     }
 
-
+# Health check endpoint
 @app.get("/health")
 async def health_check():
-    """Detailed health check endpoint"""
+    """
+    Health check endpoint for monitoring and load balancers.
+    """
     return {
         "status": "healthy",
-        "app_name": settings.app_name,
-        "version": settings.app_version,
-        "environment": "development" if settings.debug else "production"
+        "service": "ai-job-portal-api",
+        "version": "1.0.0"
     }
 
+# Global exception handler
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    """
+    Global HTTP exception handler.
+    """
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": True,
+            "message": exc.detail,
+            "status_code": exc.status_code
+        }
+    )
+
+# Global exception handler for unhandled exceptions
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    """
+    Global exception handler for unhandled exceptions.
+    """
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": True,
+            "message": "Internal server error",
+            "status_code": 500
+        }
+    )
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.debug
-    )
+    try:
+        import uvicorn
+        uvicorn.run(
+            "main:app",
+            host="0.0.0.0",
+            port=8000,
+            reload=True,
+            log_level="info"
+        )
+    except ImportError:
+        print("❌ Error: uvicorn not found!")
+        print("Please run the application using one of these methods:")
+        print("1. ./venv/bin/uvicorn main:app --reload")
+        print("2. source venv/bin/activate && uvicorn main:app --reload")
+        print("3. ./venv/bin/python -m uvicorn main:app --reload")

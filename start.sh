@@ -1,30 +1,26 @@
 #!/bin/bash
 
-# Job Portal Application Startup Script
-
-echo "🚀 Starting Job Portal Application..."
+# AI-Powered Job Portal Startup Script
+echo "🚀 Starting AI-Powered Job Portal..."
 
 # Check if virtual environment exists
 if [ ! -d "venv" ]; then
-    echo "📦 Creating virtual environment..."
-    python3 -m venv venv
+    echo "❌ Virtual environment not found. Please run ./setup.sh first."
+    exit 1
 fi
 
-# Activate virtual environment
-echo "🔧 Activating virtual environment..."
-source venv/bin/activate
-
-# Install dependencies
-echo "📚 Installing dependencies..."
-pip install -r requirements.txt
-
-# Create .env file if it doesn't exist
-if [ ! -f ".env" ]; then
-    echo "⚙️ Creating .env file from template..."
-    cp .env.example .env
-    echo "⚠️  Please update .env file with your configuration!"
+# Check if uvicorn is installed
+if [ ! -f "venv/bin/uvicorn" ]; then
+    echo "❌ uvicorn not found in virtual environment. Please run ./setup.sh first."
+    exit 1
 fi
 
-# Start the FastAPI application
-echo "🎯 Starting FastAPI server..."
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# Start the application
+echo "📡 Starting server at http://localhost:8000"
+echo "📚 API Documentation: http://localhost:8000/docs"
+echo "📖 Alternative docs: http://localhost:8000/redoc"
+echo ""
+echo "Press Ctrl+C to stop the server"
+echo ""
+
+./venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000

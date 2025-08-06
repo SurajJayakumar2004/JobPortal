@@ -1,322 +1,452 @@
 """
-Resume Parser Service with AI-powered text extraction and skill analysis.
-This service handles PDF/DOC text extraction and uses NLP for skill identification.
+AI-powered resume parsing service.
+
+This service handles the extraction and parsing of text from resume files,
+performs natural language processing to identify key sections and skills,
+and provides AI-driven feedback on resume quality and ATS compatibility.
 """
 
+import os
 import re
-import spacy
-import pdfplumber
-from docx import Document
-from textblob import TextBlob
-from typing import List, Dict, Optional, Tuple
-import logging
+import uuid
+from typing import Dict, List, Optional, Tuple
 from pathlib import Path
+import fitz  # PyMuPDF
+import docx2txt
+import spacy
+from collections import Counter
+import logging
 
-# Initialize spaCy model
-try:
-    nlp = spacy.load("en_core_web_sm")
-except IOError:
-    print("spaCy English model not found. Please run: python -m spacy download en_core_web_sm")
-    nlp = None
+from app.schemas import ParsedResumeSection, AIFeedback
+from app.config import settings
 
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Load spaCy model (download with: python -m spacy download en_core_web_sm)
+try:
+    nlp = spacy.load(settings.spacy_model)
+except OSError:
+    logger.warning(f"spaCy model '{settings.spacy_model}' not found. Please install it with: python -m spacy download {settings.spacy_model}")
+    nlp = None
+
+# Common skills database (in production, this would be a more comprehensive database)
+TECH_SKILLS = {
+    'programming': ['python', 'java', 'javascript', 'c++', 'c#', 'php', 'ruby', 'go', 'rust', 'swift', 'kotlin', 'scala'],
+    'web': ['html', 'css', 'react', 'angular', 'vue', 'nodejs', 'express', 'django', 'flask', 'fastapi'],
+    'database': ['mysql', 'postgresql', 'mongodb', 'redis', 'elasticsearch', 'oracle', 'sqlite'],
+    'cloud': ['aws', 'azure', 'gcp', 'docker', 'kubernetes', 'terraform', 'jenkins'],
+    'data': ['pandas', 'numpy', 'sklearn', 'tensorflow', 'pytorch', 'matplotlib', 'tableau'],
+    'tools': ['git', 'jira', 'confluence', 'slack', 'figma', 'photoshop', 'excel']
+}
+
+# Flatten skills for easier searching
+ALL_SKILLS = []
+for category in TECH_SKILLS.values():
+    ALL_SKILLS.extend(category)
+
+# Section headers to identify resume sections
+SECTION_PATTERNS = {
+    'summary': r'(summary|profile|objective|about|overview)',
+    'experience': r'(experience|employment|work history|professional experience|career)',
+    'education': r'(education|academic|qualifications|degrees)',
+    'skills': r'(skills|technical skills|competencies|expertise|technologies)',
+    'projects': r'(projects|portfolio|personal projects)',
+    'certifications': r'(certifications|certificates|credentials|licenses)'
+}
+
+
 class ResumeParserService:
-    """Service for parsing resumes and extracting structured information using AI/NLP."""
+    """Service class for parsing and analyzing resumes."""
     
     def __init__(self):
-        """Initialize the resume parser with predefined skill categories."""
-        self.skill_keywords = {
-            "programming_languages": [
-                "python", "java", "javascript", "typescript", "c++", "c#", "php", "ruby", 
-                "go", "rust", "swift", "kotlin", "scala", "r", "matlab", "sql", "html", 
-                "css", "sass", "less", "shell", "bash", "powershell", "perl", "lua"
-            ],
-            "frameworks_libraries": [
-                "react", "angular", "vue", "django", "flask", "fastapi", "express", 
-                "spring", "spring boot", "hibernate", "laravel", "rails", "jquery", 
-                "bootstrap", "tailwind", "node.js", "next.js", "nuxt.js", "gatsby",
-                "tensorflow", "pytorch", "keras", "scikit-learn", "pandas", "numpy"
-            ],
-            "databases": [
-                "mysql", "postgresql", "mongodb", "redis", "elasticsearch", "cassandra", 
-                "oracle", "sql server", "sqlite", "dynamodb", "neo4j", "couchdb"
-            ],
-            "cloud_devops": [
-                "aws", "azure", "google cloud", "gcp", "docker", "kubernetes", "jenkins", 
-                "gitlab", "github actions", "terraform", "ansible", "vagrant", "nginx", 
-                "apache", "linux", "ubuntu", "centos", "debian"
-            ],
-            "soft_skills": [
-                "leadership", "communication", "teamwork", "problem solving", "analytical", 
-                "creative", "adaptable", "detail oriented", "time management", "project management",
-                "collaboration", "mentoring", "presentation", "negotiation", "strategic thinking"
-            ],
-            "tools_technologies": [
-                "git", "jira", "confluence", "slack", "trello", "asana", "notion", 
-                "figma", "adobe", "photoshop", "illustrator", "sketch", "invision",
-                "postman", "swagger", "api", "rest", "graphql", "soap", "microservices"
-            ]
-        }
-        
-        # Compile regex patterns for contact information
-        self.email_pattern = re.compile(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b')
-        self.phone_pattern = re.compile(r'(\+?1?[-.\s]?)?\(?([0-9]{3})\)?[-.\s]?([0-9]{3})[-.\s]?([0-9]{4})')
-        self.linkedin_pattern = re.compile(r'linkedin\.com/in/[\w-]+', re.IGNORECASE)
-        self.github_pattern = re.compile(r'github\.com/[\w-]+', re.IGNORECASE)
+        """Initialize the resume parser service."""
+        self.upload_dir = Path(settings.upload_dir)
+        self.upload_dir.mkdir(exist_ok=True)
     
-    def extract_text_from_pdf(self, file_path: str) -> str:
-        """Extract text from PDF file using pdfplumber."""
-        try:
-            text = ""
-            with pdfplumber.open(file_path) as pdf:
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        text += page_text + "\n"
-            return text.strip()
-        except Exception as e:
-            logger.error(f"Error extracting text from PDF {file_path}: {str(e)}")
-            return ""
-    
-    def extract_text_from_docx(self, file_path: str) -> str:
-        """Extract text from DOCX file using python-docx."""
-        try:
-            doc = Document(file_path)
-            text = ""
-            for paragraph in doc.paragraphs:
-                text += paragraph.text + "\n"
-            return text.strip()
-        except Exception as e:
-            logger.error(f"Error extracting text from DOCX {file_path}: {str(e)}")
-            return ""
-    
-    def extract_text_from_file(self, file_path: str) -> str:
-        """Extract text from supported file formats."""
-        file_path = Path(file_path)
-        
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
-        
-        extension = file_path.suffix.lower()
-        
-        if extension == '.pdf':
-            return self.extract_text_from_pdf(str(file_path))
-        elif extension in ['.docx', '.doc']:
-            return self.extract_text_from_docx(str(file_path))
-        else:
-            raise ValueError(f"Unsupported file format: {extension}")
-    
-    def extract_contact_info(self, text: str) -> Dict[str, Optional[str]]:
-        """Extract contact information from resume text."""
-        contact_info = {
-            "email": None,
-            "phone": None,
-            "linkedin": None,
-            "github": None
-        }
-        
-        # Extract email
-        email_match = self.email_pattern.search(text)
-        if email_match:
-            contact_info["email"] = email_match.group()
-        
-        # Extract phone
-        phone_match = self.phone_pattern.search(text)
-        if phone_match:
-            contact_info["phone"] = phone_match.group()
-        
-        # Extract LinkedIn
-        linkedin_match = self.linkedin_pattern.search(text)
-        if linkedin_match:
-            contact_info["linkedin"] = "https://" + linkedin_match.group()
-        
-        # Extract GitHub
-        github_match = self.github_pattern.search(text)
-        if github_match:
-            contact_info["github"] = "https://" + github_match.group()
-        
-        return contact_info
-    
-    def extract_skills(self, text: str) -> Dict[str, List[str]]:
-        """Extract skills from resume text using keyword matching and NLP."""
-        text_lower = text.lower()
-        extracted_skills = {category: [] for category in self.skill_keywords.keys()}
-        
-        # Keyword-based extraction
-        for category, keywords in self.skill_keywords.items():
-            for keyword in keywords:
-                if keyword.lower() in text_lower:
-                    extracted_skills[category].append(keyword.title())
-        
-        # Remove duplicates and sort
-        for category in extracted_skills:
-            extracted_skills[category] = sorted(list(set(extracted_skills[category])))
-        
-        return extracted_skills
-    
-    def extract_experience_years(self, text: str) -> Optional[int]:
-        """Extract years of experience from resume text."""
-        experience_patterns = [
-            r'(\d+)\+?\s*years?\s*(of\s*)?experience',
-            r'(\d+)\+?\s*years?\s*in',
-            r'(\d+)\+?\s*yrs?\s*(of\s*)?experience',
-            r'experience.*?(\d+)\+?\s*years?'
-        ]
-        
-        for pattern in experience_patterns:
-            matches = re.findall(pattern, text.lower())
-            if matches:
-                # Get the highest number found
-                years = max([int(match[0] if isinstance(match, tuple) else match) for match in matches])
-                return years
-        
-        return None
-    
-    def extract_education(self, text: str) -> List[Dict[str, str]]:
-        """Extract education information from resume text."""
-        education_keywords = [
-            "bachelor", "master", "phd", "doctorate", "diploma", "certificate",
-            "b.s.", "b.a.", "m.s.", "m.a.", "m.b.a.", "b.tech", "m.tech",
-            "university", "college", "institute", "school"
-        ]
-        
-        degree_patterns = [
-            r'(bachelor|master|phd|doctorate|diploma|certificate|b\.s\.|b\.a\.|m\.s\.|m\.a\.|m\.b\.a\.|b\.tech|m\.tech).*?(in|of)\s*([^\n,;]+)',
-            r'(bachelor|master|phd|doctorate|diploma|certificate|b\.s\.|b\.a\.|m\.s\.|m\.a\.|m\.b\.a\.|b\.tech|m\.tech)\s*([^\n,;]+)'
-        ]
-        
-        education = []
-        text_lower = text.lower()
-        
-        for pattern in degree_patterns:
-            matches = re.findall(pattern, text_lower)
-            for match in matches:
-                if isinstance(match, tuple) and len(match) >= 2:
-                    degree = match[0].strip()
-                    field = (match[2] if len(match) > 2 else match[1]).strip()
-                    education.append({
-                        "degree": degree.title(),
-                        "field": field.title()
-                    })
-        
-        return education[:3]  # Return max 3 education entries
-    
-    def analyze_sentiment(self, text: str) -> Dict[str, float]:
-        """Analyze sentiment of resume text using TextBlob."""
-        try:
-            blob = TextBlob(text)
-            return {
-                "polarity": round(blob.sentiment.polarity, 3),  # -1 to 1
-                "subjectivity": round(blob.sentiment.subjectivity, 3)  # 0 to 1
-            }
-        except Exception as e:
-            logger.error(f"Error analyzing sentiment: {str(e)}")
-            return {"polarity": 0.0, "subjectivity": 0.0}
-    
-    def extract_entities(self, text: str) -> Dict[str, List[str]]:
-        """Extract named entities using spaCy NLP."""
-        if not nlp:
-            return {"organizations": [], "locations": [], "persons": []}
-        
-        try:
-            doc = nlp(text)
-            entities = {
-                "organizations": [],
-                "locations": [],
-                "persons": []
-            }
-            
-            for ent in doc.ents:
-                if ent.label_ == "ORG":
-                    entities["organizations"].append(ent.text)
-                elif ent.label_ in ["GPE", "LOC"]:
-                    entities["locations"].append(ent.text)
-                elif ent.label_ == "PERSON":
-                    entities["persons"].append(ent.text)
-            
-            # Remove duplicates and limit results
-            for key in entities:
-                entities[key] = list(set(entities[key]))[:5]
-            
-            return entities
-        except Exception as e:
-            logger.error(f"Error extracting entities: {str(e)}")
-            return {"organizations": [], "locations": [], "persons": []}
-    
-    def calculate_skill_score(self, skills: Dict[str, List[str]]) -> int:
-        """Calculate a skill score based on the number and diversity of skills."""
-        total_skills = sum(len(skill_list) for skill_list in skills.values())
-        categories_with_skills = sum(1 for skill_list in skills.values() if skill_list)
-        
-        # Base score from total skills (max 70 points)
-        skill_score = min(total_skills * 2, 70)
-        
-        # Bonus for skill diversity (max 30 points)
-        diversity_bonus = categories_with_skills * 5
-        
-        return min(skill_score + diversity_bonus, 100)
-    
-    def parse_resume(self, file_path: str) -> Dict:
+    async def parse_resume_file(self, file_path: str, filename: str) -> Dict:
         """
-        Main method to parse a resume file and extract all information.
+        Parse a resume file and extract structured information.
         
         Args:
-            file_path: Path to the resume file
+            file_path: Path to the uploaded resume file
+            filename: Original filename of the resume
             
         Returns:
-            Dictionary containing all extracted information
+            Dict containing parsed resume data and AI feedback
         """
         try:
             # Extract text from file
-            text = self.extract_text_from_file(file_path)
+            text = self._extract_text_from_file(file_path)
             
             if not text.strip():
-                raise ValueError("No text could be extracted from the resume")
+                raise ValueError("Could not extract text from resume file")
             
-            # Extract all information
-            contact_info = self.extract_contact_info(text)
-            skills = self.extract_skills(text)
-            experience_years = self.extract_experience_years(text)
-            education = self.extract_education(text)
-            sentiment = self.analyze_sentiment(text)
-            entities = self.extract_entities(text)
-            skill_score = self.calculate_skill_score(skills)
+            # Parse sections
+            parsed_sections = self._parse_resume_sections(text)
+            
+            # Generate AI feedback
+            ai_feedback = self._generate_ai_feedback(text, parsed_sections)
             
             return {
-                "success": True,
-                "text": text[:1000] + "..." if len(text) > 1000 else text,  # Truncate for storage
-                "contact_info": contact_info,
-                "skills": skills,
-                "experience_years": experience_years,
-                "education": education,
-                "sentiment": sentiment,
-                "entities": entities,
-                "skill_score": skill_score,
-                "total_skills": sum(len(skill_list) for skill_list in skills.values()),
-                "text_length": len(text),
-                "processing_metadata": {
-                    "file_format": Path(file_path).suffix.lower(),
-                    "nlp_enabled": nlp is not None
-                }
+                'parsed_text': text,
+                'parsed_sections': parsed_sections,
+                'ai_feedback': ai_feedback,
+                'processing_status': 'completed'
             }
             
         except Exception as e:
-            logger.error(f"Error parsing resume {file_path}: {str(e)}")
+            logger.error(f"Error parsing resume {filename}: {str(e)}")
             return {
-                "success": False,
-                "error": str(e),
-                "text": "",
-                "contact_info": {},
-                "skills": {},
-                "experience_years": None,
-                "education": [],
-                "sentiment": {"polarity": 0.0, "subjectivity": 0.0},
-                "entities": {"organizations": [], "locations": [], "persons": []},
-                "skill_score": 0,
-                "total_skills": 0,
-                "text_length": 0
+                'parsed_text': None,
+                'parsed_sections': None,
+                'ai_feedback': None,
+                'processing_status': 'failed',
+                'error': str(e)
             }
-
-# Global instance
-resume_parser = ResumeParserService()
+    
+    def _extract_text_from_file(self, file_path: str) -> str:
+        """
+        Extract text from PDF or DOCX file.
+        
+        Args:
+            file_path: Path to the file
+            
+        Returns:
+            str: Extracted text content
+        """
+        file_ext = Path(file_path).suffix.lower()
+        
+        if file_ext == '.pdf':
+            return self._extract_text_from_pdf(file_path)
+        elif file_ext in ['.docx', '.doc']:
+            return self._extract_text_from_docx(file_path)
+        else:
+            raise ValueError(f"Unsupported file type: {file_ext}")
+    
+    def _extract_text_from_pdf(self, file_path: str) -> str:
+        """Extract text from PDF file using PyMuPDF."""
+        try:
+            doc = fitz.open(file_path)
+            text = ""
+            
+            for page_num in range(len(doc)):
+                page = doc.load_page(page_num)
+                text += page.get_text()
+            
+            doc.close()
+            return text
+            
+        except Exception as e:
+            raise ValueError(f"Error extracting text from PDF: {str(e)}")
+    
+    def _extract_text_from_docx(self, file_path: str) -> str:
+        """Extract text from DOCX file using docx2txt."""
+        try:
+            return docx2txt.process(file_path)
+        except Exception as e:
+            raise ValueError(f"Error extracting text from DOCX: {str(e)}")
+    
+    def _parse_resume_sections(self, text: str) -> ParsedResumeSection:
+        """
+        Parse resume text into structured sections.
+        
+        Args:
+            text: Raw resume text
+            
+        Returns:
+            ParsedResumeSection: Structured resume sections
+        """
+        # Split text into lines and clean
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        
+        # Initialize sections
+        sections = {
+            'summary': [],
+            'experience': [],
+            'education': [],
+            'skills': [],
+            'projects': [],
+            'certifications': []
+        }
+        
+        current_section = None
+        
+        # Parse sections based on headers
+        for line in lines:
+            line_lower = line.lower()
+            
+            # Check if line is a section header
+            section_found = False
+            for section_name, pattern in SECTION_PATTERNS.items():
+                if re.search(pattern, line_lower):
+                    current_section = section_name
+                    section_found = True
+                    break
+            
+            # If not a header and we have a current section, add to that section
+            if not section_found and current_section and len(line) > 10:
+                sections[current_section].append(line)
+        
+        # Extract skills using NLP and pattern matching
+        extracted_skills = self._extract_skills(text)
+        if extracted_skills:
+            sections['skills'].extend(extracted_skills)
+        
+        # Remove duplicates and clean sections
+        for section_name in sections:
+            sections[section_name] = list(set(sections[section_name]))
+        
+        return ParsedResumeSection(
+            summary='\n'.join(sections['summary']) if sections['summary'] else None,
+            experience=sections['experience'],
+            education=sections['education'],
+            skills=sections['skills'],
+            projects=sections['projects'],
+            certifications=sections['certifications']
+        )
+    
+    def _extract_skills(self, text: str) -> List[str]:
+        """
+        Extract skills from resume text using NLP and pattern matching.
+        
+        Args:
+            text: Resume text
+            
+        Returns:
+            List[str]: Extracted skills
+        """
+        found_skills = []
+        text_lower = text.lower()
+        
+        # Pattern-based skill extraction
+        for skill in ALL_SKILLS:
+            if skill.lower() in text_lower:
+                found_skills.append(skill.title())
+        
+        # NLP-based skill extraction (if spaCy is available)
+        if nlp:
+            try:
+                doc = nlp(text)
+                
+                # Extract entities that might be skills
+                for ent in doc.ents:
+                    if ent.label_ in ['ORG', 'PRODUCT']:  # Organizations and products are often technologies
+                        potential_skill = ent.text.lower()
+                        if len(potential_skill) > 2 and potential_skill in [s.lower() for s in ALL_SKILLS]:
+                            found_skills.append(potential_skill.title())
+                
+                # Extract noun phrases that might be skills
+                for chunk in doc.noun_chunks:
+                    chunk_text = chunk.text.lower()
+                    if len(chunk_text) < 20:  # Avoid long phrases
+                        for skill in ALL_SKILLS:
+                            if skill.lower() in chunk_text:
+                                found_skills.append(skill.title())
+                                
+            except Exception as e:
+                logger.warning(f"NLP skill extraction failed: {str(e)}")
+        
+        return list(set(found_skills))
+    
+    def _generate_ai_feedback(self, text: str, sections: ParsedResumeSection) -> AIFeedback:
+        """
+        Generate AI feedback for the resume.
+        
+        Args:
+            text: Raw resume text
+            sections: Parsed resume sections
+            
+        Returns:
+            AIFeedback: AI-generated feedback and scores
+        """
+        # Calculate ATS compatibility score
+        ats_score = self._calculate_ats_score(text, sections)
+        
+        # Calculate formatting score
+        formatting_score = self._calculate_formatting_score(text)
+        
+        # Calculate completeness score
+        completeness_score = self._calculate_completeness_score(sections)
+        
+        # Generate suggestions
+        suggestions = self._generate_suggestions(sections, ats_score, formatting_score, completeness_score)
+        
+        # Identify strengths
+        strengths = self._identify_strengths(sections)
+        
+        # Identify skill gaps (basic implementation)
+        skill_gaps = self._identify_skill_gaps(sections.skills or [])
+        
+        return AIFeedback(
+            ats_score=ats_score,
+            formatting_score=formatting_score,
+            completeness_score=completeness_score,
+            suggestions=suggestions,
+            strengths=strengths,
+            skill_gaps=skill_gaps
+        )
+    
+    def _calculate_ats_score(self, text: str, sections: ParsedResumeSection) -> float:
+        """Calculate ATS (Applicant Tracking System) compatibility score."""
+        score = 0.0
+        
+        # Check for contact information
+        if re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text):
+            score += 20
+        
+        if re.search(r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b', text):
+            score += 15
+        
+        # Check for section headers
+        sections_found = 0
+        for pattern in SECTION_PATTERNS.values():
+            if re.search(pattern, text, re.IGNORECASE):
+                sections_found += 1
+        score += min(sections_found * 10, 40)
+        
+        # Check for skills section
+        if sections.skills:
+            score += 15
+        
+        # Check for experience section
+        if sections.experience:
+            score += 10
+        
+        return min(score, 100.0)
+    
+    def _calculate_formatting_score(self, text: str) -> float:
+        """Calculate formatting quality score."""
+        score = 0.0
+        
+        # Check text length
+        if 200 <= len(text) <= 2000:
+            score += 30
+        elif len(text) > 2000:
+            score += 20
+        
+        # Check for proper capitalization
+        lines = text.split('\n')
+        capitalized_lines = sum(1 for line in lines if line and line[0].isupper())
+        if capitalized_lines / max(len(lines), 1) > 0.3:
+            score += 25
+        
+        # Check for bullet points or structured formatting
+        if '•' in text or '*' in text or '-' in text:
+            score += 20
+        
+        # Check for numbers (dates, achievements)
+        if re.search(r'\d{4}', text):  # Years
+            score += 15
+        
+        # Check for action verbs (common in good resumes)
+        action_verbs = ['managed', 'developed', 'created', 'implemented', 'led', 'designed', 'built', 'improved']
+        found_verbs = sum(1 for verb in action_verbs if verb.lower() in text.lower())
+        score += min(found_verbs * 2, 10)
+        
+        return min(score, 100.0)
+    
+    def _calculate_completeness_score(self, sections: ParsedResumeSection) -> float:
+        """Calculate completeness score based on available sections."""
+        score = 0.0
+        
+        if sections.experience:
+            score += 30
+        if sections.education:
+            score += 25
+        if sections.skills:
+            score += 25
+        if sections.summary:
+            score += 10
+        if sections.projects:
+            score += 5
+        if sections.certifications:
+            score += 5
+        
+        return min(score, 100.0)
+    
+    def _generate_suggestions(self, sections: ParsedResumeSection, ats_score: float, 
+                            formatting_score: float, completeness_score: float) -> List[str]:
+        """Generate improvement suggestions based on analysis."""
+        suggestions = []
+        
+        if ats_score < 70:
+            suggestions.append("Improve ATS compatibility by adding clear section headers and contact information")
+        
+        if formatting_score < 70:
+            suggestions.append("Enhance formatting with bullet points and consistent structure")
+        
+        if completeness_score < 70:
+            suggestions.append("Add missing sections like experience, education, or skills")
+        
+        if not sections.skills or len(sections.skills) < 5:
+            suggestions.append("Add more relevant technical and soft skills")
+        
+        if not sections.summary:
+            suggestions.append("Include a professional summary at the top of your resume")
+        
+        if sections.experience and len(sections.experience) < 3:
+            suggestions.append("Provide more detailed work experience with quantifiable achievements")
+        
+        return suggestions
+    
+    def _identify_strengths(self, sections: ParsedResumeSection) -> List[str]:
+        """Identify resume strengths."""
+        strengths = []
+        
+        if sections.skills and len(sections.skills) >= 8:
+            strengths.append("Comprehensive skills section")
+        
+        if sections.experience and len(sections.experience) >= 3:
+            strengths.append("Detailed work experience")
+        
+        if sections.education:
+            strengths.append("Educational background included")
+        
+        if sections.projects:
+            strengths.append("Project experience demonstrated")
+        
+        if sections.certifications:
+            strengths.append("Professional certifications listed")
+        
+        return strengths
+    
+    def _identify_skill_gaps(self, current_skills: List[str]) -> List[str]:
+        """Identify potential skill gaps based on current market trends."""
+        current_skills_lower = [skill.lower() for skill in current_skills]
+        
+        # High-demand skills that are often missing
+        high_demand_skills = [
+            'cloud computing', 'machine learning', 'data analysis',
+            'project management', 'agile methodology', 'api development'
+        ]
+        
+        gaps = []
+        for skill in high_demand_skills:
+            if skill not in current_skills_lower:
+                gaps.append(skill.title())
+        
+        return gaps[:5]  # Return top 5 gaps
+    
+    async def save_uploaded_file(self, file_content: bytes, filename: str) -> str:
+        """
+        Save uploaded file to disk and return file path.
+        
+        Args:
+            file_content: File content as bytes
+            filename: Original filename
+            
+        Returns:
+            str: Path to saved file
+        """
+        # Generate unique filename
+        file_ext = Path(filename).suffix
+        unique_filename = f"{uuid.uuid4()}{file_ext}"
+        file_path = self.upload_dir / unique_filename
+        
+        # Save file
+        with open(file_path, 'wb') as f:
+            f.write(file_content)
+        
+        return str(file_path)

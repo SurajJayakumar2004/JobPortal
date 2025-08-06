@@ -1,22 +1,32 @@
+/**
+ * Protected route component that ensures only authenticated users
+ * can access certain pages. Redirects to login if not authenticated.
+ */
+
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
-const ProtectedRoute = ({ children, requiredRole }) => {
-  const { isAuthenticated, user, loading } = useAuth();
+const ProtectedRoute = ({ children }) => {
+  const { isAuthenticated, loading } = useAuth();
 
+  // Show loading spinner while checking authentication status
   if (loading) {
-    return <div className="loading">Loading...</div>;
+    return (
+      <div className="container">
+        <div className="loading">
+          <p>Loading...</p>
+        </div>
+      </div>
+    );
   }
 
+  // Redirect to login if not authenticated
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 
-  if (requiredRole && user?.role !== requiredRole) {
-    return <Navigate to="/dashboard" replace />;
-  }
-
+  // Render protected content if authenticated
   return children;
 };
 

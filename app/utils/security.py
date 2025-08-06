@@ -1,33 +1,30 @@
+"""
+Security utilities for authentication and password handling.
+
+This module provides functions for password hashing, JWT token creation,
+and authentication verification.
+"""
+
 from datetime import datetime, timedelta
-from typing import Union, Any
+from typing import Optional
 from jose import JWTError, jwt
 from passlib.context import CryptContext
+from fastapi import HTTPException, status
+
 from app.config import settings
+from app.schemas import TokenData
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-def get_password_hash(password: str) -> str:
-    """
-    Hash a password using bcrypt
-    
-    Args:
-        password (str): Plain text password
-        
-    Returns:
-        str: Hashed password
-    """
-    return pwd_context.hash(password)
-
-
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
-    Verify a password against its hash
+    Verify a plain password against its hash.
     
     Args:
-        plain_password (str): Plain text password
-        hashed_password (str): Hashed password from database
+        plain_password: The plain text password
+        hashed_password: The hashed password from database
         
     Returns:
         bool: True if password matches, False otherwise
@@ -35,16 +32,29 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     return pwd_context.verify(plain_password, hashed_password)
 
 
-def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None) -> str:
+def get_password_hash(password: str) -> str:
     """
-    Create a JWT access token
+    Hash a password using bcrypt.
     
     Args:
-        data (dict): Data to encode in the token
-        expires_delta (timedelta, optional): Custom expiration time
+        password: The plain text password to hash
         
     Returns:
-        str: Encoded JWT token
+        str: The hashed password
+    """
+    return pwd_context.hash(password)
+
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Create a JWT access token.
+    
+    Args:
+        data: The data to encode in the token
+        expires_delta: Optional expiration time delta
+        
+    Returns:
+        str: The encoded JWT token
     """
     to_encode = data.copy()
     
@@ -59,49 +69,61 @@ def create_access_token(data: dict, expires_delta: Union[timedelta, None] = None
     return encoded_jwt
 
 
-def verify_token(token: str) -> Union[dict, None]:
+def verify_token(token: str, credentials_exception: HTTPException) -> TokenData:
     """
-    Verify and decode a JWT token
+    Verify and decode a JWT token.
     
     Args:
-        token (str): JWT token to verify
+        token: The JWT token to verify
+        credentials_exception: Exception to raise if verification fails
         
     Returns:
-        dict or None: Decoded token data if valid, None if invalid
+        TokenData: The decoded token data
+        
+    Raises:
+        HTTPException: If token verification fails
     """
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
-        return payload
+        email: str = payload.get("sub")
+        user_id: str = payload.get("user_id")
+        role: str = payload.get("role")
+        
+        if email is None or user_id is None:
+            raise credentials_exception
+            
+        token_data = TokenData(email=email, user_id=user_id, role=role)
+        return token_data
+        
     except JWTError:
-        return None
+        raise credentials_exception
 
 
-def create_password_reset_token(email: str) -> str:
+def create_token_response(user_id: str, email: str, role: str) -> dict:
     """
-    Create a password reset token (for future use)
+    Create a complete token response with user data.
     
     Args:
-        email (str): User email
+        user_id: The user's ID
+        email: The user's email
+        role: The user's role
         
     Returns:
-        str: Password reset token
+        dict: Token response with access token and user info
     """
-    data = {"sub": email, "type": "password_reset"}
-    expires_delta = timedelta(hours=1)  # Reset tokens expire in 1 hour
-    return create_access_token(data, expires_delta)
-
-
-def verify_password_reset_token(token: str) -> Union[str, None]:
-    """
-    Verify a password reset token and return email
+    access_token_expires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"sub": email, "user_id": user_id, "role": role},
+        expires_delta=access_token_expires
+    )
     
-    Args:
-        token (str): Password reset token
-        
-    Returns:
-        str or None: Email if token is valid, None otherwise
-    """
-    payload = verify_token(token)
-    if payload and payload.get("type") == "password_reset":
-        return payload.get("sub")
-    return None
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": settings.access_token_expire_minutes * 60,
+        "user": {
+            "id": user_id,
+            "email": email,
+            "role": role
+        }
+    }

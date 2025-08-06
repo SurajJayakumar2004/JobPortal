@@ -1,91 +1,123 @@
+/**
+ * User login page with authentication form.
+ * Handles user login and JWT token storage.
+ */
+
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import { authAPI } from '../services/api';
+import { getStatusErrorMessage } from '../utils/errorHandler';
 
 const LoginPage = () => {
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    username: '', // API expects 'username' field for email
+    password: '',
   });
-  const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  
-  const { login } = useAuth();
+  const [error, setError] = useState('');
   const navigate = useNavigate();
+  const { login } = useAuth();
 
+  /**
+   * Handle form input changes
+   */
   const handleChange = (e) => {
     setFormData({
       ...formData,
-      [e.target.name]: e.target.value
+      [e.target.name]: e.target.value,
     });
+    // Clear error when user starts typing
+    if (error) setError('');
   };
 
+  /**
+   * Handle form submission
+   */
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    if (!formData.username || !formData.password) {
+      setError('Please enter both email and password');
+      return;
+    }
+
     setLoading(true);
     setError('');
 
-    const result = await login(formData.email, formData.password);
-    
-    if (result.success) {
+    try {
+      // Call login API
+      const response = await authAPI.login(formData);
+      const { data } = response.data; // Backend wraps response in { success: true, data: {...} }
+      const { access_token, user } = data;
+      
+      // Store token and update auth state
+      login(access_token, user);
+      
+      // Navigate to dashboard
       navigate('/dashboard');
-    } else {
-      setError(result.error);
+    } catch (error) {
+      console.error('Login error:', error);
+      
+      if (error.response?.status === 401) {
+        setError('Invalid email or password');
+      } else {
+        setError(getStatusErrorMessage(error));
+      }
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   };
 
   return (
-    <div className="login-page">
-      <div className="auth-container">
-        <div className="auth-form">
-          <h2>Sign In</h2>
-          
-          {error && <div className="error-message">{error}</div>}
-          
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="email">Email</label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                required
-                placeholder="Enter your email"
-              />
-            </div>
-            
-            <div className="form-group">
-              <label htmlFor="password">Password</label>
-              <input
-                type="password"
-                id="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                required
-                placeholder="Enter your password"
-              />
-            </div>
-            
-            <button type="submit" className="btn btn-primary" disabled={loading}>
-              {loading ? 'Signing In...' : 'Sign In'}
-            </button>
-          </form>
-          
-          <div className="auth-links">
-            <p>Don't have an account? <Link to="/register">Register here</Link></p>
+    <div className="container">
+      <div className="auth-form">
+        <h1>Welcome Back</h1>
+        <p>Sign in to access your AI-powered job portal</p>
+
+        {error && <div className="error-message">{error}</div>}
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label htmlFor="username">Email Address</label>
+            <input
+              type="email"
+              id="username"
+              name="username"
+              value={formData.username}
+              onChange={handleChange}
+              placeholder="Enter your email"
+              required
+            />
           </div>
-          
-          <div className="demo-credentials">
-            <h4>Demo Credentials:</h4>
-            <p><strong>Job Seeker:</strong> jobseeker@example.com / jobseeker123</p>
-            <p><strong>Employer:</strong> admin@jobportal.com / admin123</p>
-            <p><strong>Counselor:</strong> counselor@jobportal.com / counselor123</p>
+
+          <div className="form-group">
+            <label htmlFor="password">Password</label>
+            <input
+              type="password"
+              id="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              placeholder="Enter your password"
+              required
+            />
           </div>
+
+          <button 
+            type="submit" 
+            className="btn btn-primary" 
+            disabled={loading}
+          >
+            {loading ? 'Signing In...' : 'Sign In'}
+          </button>
+        </form>
+
+        <div className="auth-links">
+          <p>
+            Don't have an account?{' '}
+            <Link to="/register">Create one here</Link>
+          </p>
         </div>
       </div>
     </div>
