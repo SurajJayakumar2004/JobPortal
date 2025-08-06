@@ -1,0 +1,15 @@
+com/appdeduplicator/FileDeleter.class
+com/appdeduplicator/gui/SwingGuiMain$FileListCellRenderer.class
+com/appdeduplicator/ConfigManager.class
+com/appdeduplicator/FileScanner.class
+com/appdeduplicator/gui/SwingGuiMain$2.class
+com/appdeduplicator/gui/SwingGuiMain$3.class
+com/appdeduplicator/gui/SwingGuiMain.class
+com/appdeduplicator/Main.class
+com/appdeduplicator/Hasher.class
+com/appdeduplicator/Categorizer.class
+com/appdeduplicator/gui/SwingGuiMain$1.class
+com/appdeduplicator/gui/SwingGuiMain$4.class
+com/appdeduplicator/Launcher.class
+com/appdeduplicator/DuplicateDetector.class
+com/appdeduplicator/Logger.class

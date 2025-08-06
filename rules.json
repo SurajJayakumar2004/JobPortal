@@ -1,0 +1,89 @@
+{
+  "Browser": [
+    "chrome",
+    "firefox",
+    "edge",
+    "safari",
+    "opera",
+    "browser",
+    "chromium"
+  ],
+  "Media": [
+    "vlc",
+    "spotify",
+    "netflix",
+    "media",
+    "player",
+    "music",
+    "video",
+    "audio",
+    "itunes",
+    "winamp"
+  ],
+  "IDE": [
+    "vscode",
+    "intellij",
+    "eclipse",
+    "netbeans",
+    "code",
+    "studio",
+    "atom",
+    "sublime",
+    "notepad",
+    "vim"
+  ],
+  "Office": [
+    "word",
+    "excel",
+    "powerpoint",
+    "office",
+    "writer",
+    "calc",
+    "impress",
+    "libreoffice",
+    "openoffice"
+  ],
+  "Games": [
+    "game",
+    "steam",
+    "epic",
+    "origin",
+    "uplay",
+    "battle",
+    "launcher",
+    "minecraft",
+    "unity"
+  ],
+  "System": [
+    "system",
+    "driver",
+    "update",
+    "antivirus",
+    "security",
+    "windows",
+    "microsoft",
+    "admin",
+    "service"
+  ],
+  "Development": [
+    "git",
+    "node",
+    "python",
+    "java",
+    "sdk",
+    "compiler",
+    "build",
+    "maven",
+    "gradle"
+  ],
+  "Communication": [
+    "skype",
+    "discord",
+    "slack",
+    "teams",
+    "zoom",
+    "chat",
+    "messenger",
+    "whatsapp"
+  ]
+}
