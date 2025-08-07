@@ -454,3 +454,58 @@ class ErrorResponse(BaseModel):
     message: str
     error_code: Optional[str] = None
     details: Optional[Dict[str, Any]] = None
+
+
+# AI Analysis Models
+class SkillGapAnalysisRequest(BaseModel):
+    """Request model for skill gap analysis."""
+    candidate_id: str
+    job_id: str
+
+
+class SkillGapAnalysisResponse(BaseModel):
+    """Response model for skill gap analysis."""
+    candidate_id: str
+    job_id: str
+    skill_coverage: float = Field(..., ge=0, le=100)
+    missing_skills: List[str]
+    matching_skills: List[str]
+    critical_gaps: int
+    recommendations: List[str]
+    improvement_areas: List[str]
+
+
+class CandidateRecommendationRequest(BaseModel):
+    """Request model for candidate recommendations."""
+    job_id: str
+    max_candidates: int = Field(default=10, ge=1, le=50)
+    min_match_score: float = Field(default=0.5, ge=0, le=1)
+
+
+class MarketTrendData(BaseModel):
+    """Model for market trend information."""
+    skill_demand: Dict[str, Any]
+    job_categories: Dict[str, Any]
+    salary_trends: Dict[str, Any]
+    remote_work: Dict[str, Any]
+    hiring_timeline: Dict[str, Any]
+
+
+class JobOptimizationSuggestion(BaseModel):
+    """Model for job posting optimization suggestions."""
+    job_id: str
+    current_performance: Dict[str, Any]
+    title_optimization: Dict[str, Any]
+    description_optimization: Dict[str, Any]
+    requirements_optimization: Dict[str, Any]
+    compensation_optimization: Dict[str, Any]
+    ats_optimization: Dict[str, Any]
+
+
+class CandidateInsights(BaseModel):
+    """Model for candidate insights and recommendations."""
+    candidate_id: str
+    profile_strength: Dict[str, Any]
+    market_fit: Dict[str, Any]
+    career_recommendations: List[str]
+    job_match_potential: Dict[str, Any]

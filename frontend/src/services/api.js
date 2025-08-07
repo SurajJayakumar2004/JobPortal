@@ -9,7 +9,7 @@ import { logError, retryApiCall } from '../utils/errorHandler';
 // Configure axios instance with base URL
 // Create axios instance with base configuration
 const api = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: 'http://localhost:8001',
   timeout: 30000, // Increased timeout for file uploads
   headers: {
     'Content-Type': 'application/json',

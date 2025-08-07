@@ -8,6 +8,8 @@ user registration, login, token refresh, and logout functionality.
 from fastapi import APIRouter, HTTPException, status, Depends
 from typing import Dict, Any
 import uuid
+import json
+import os
 from datetime import datetime
 
 from app.schemas import (
@@ -22,9 +24,82 @@ from app.utils.dependencies import get_current_active_user, TokenData
 
 router = APIRouter()
 
-# In-memory user storage (replace with database in production)
-users_db: Dict[str, User] = {}
-users_by_email: Dict[str, str] = {}  # email -> user_id mapping
+# Persistent storage files
+USERS_DB_FILE = "users_db.json"
+USERS_BY_EMAIL_FILE = "users_by_email.json"
+
+def load_users_db():
+    """Load users database from file."""
+    try:
+        if os.path.exists(USERS_DB_FILE):
+            with open(USERS_DB_FILE, 'r') as f:
+                data = json.load(f)
+                # Convert dict data back to User objects
+                users_db = {}
+                for user_id, user_data in data.items():
+                    # Convert datetime strings back to datetime objects
+                    if 'created_at' in user_data:
+                        user_data['created_at'] = datetime.fromisoformat(user_data['created_at'])
+                    if 'updated_at' in user_data:
+                        user_data['updated_at'] = datetime.fromisoformat(user_data['updated_at'])
+                    
+                    # Convert profile dict to UserProfile object if it exists
+                    if 'profile' in user_data and user_data['profile']:
+                        user_data['profile'] = UserProfile(**user_data['profile'])
+                    
+                    users_db[user_id] = User(**user_data)
+                return users_db
+        return {}
+    except Exception as e:
+        print(f"Error loading users database: {e}")
+        return {}
+
+def save_users_db(users_db):
+    """Save users database to file."""
+    try:
+        # Convert User objects to dict for JSON serialization
+        data = {}
+        for user_id, user in users_db.items():
+            user_dict = user.dict()
+            # Convert datetime objects to strings
+            if 'created_at' in user_dict:
+                user_dict['created_at'] = user_dict['created_at'].isoformat()
+            if 'updated_at' in user_dict:
+                user_dict['updated_at'] = user_dict['updated_at'].isoformat()
+            
+            # Ensure _id field is present for loading
+            if 'id' in user_dict and '_id' not in user_dict:
+                user_dict['_id'] = user_dict['id']
+            
+            data[user_id] = user_dict
+        
+        with open(USERS_DB_FILE, 'w') as f:
+            json.dump(data, f, indent=2)
+    except Exception as e:
+        print(f"Error saving users database: {e}")
+
+def load_users_by_email():
+    """Load email to user_id mapping from file."""
+    try:
+        if os.path.exists(USERS_BY_EMAIL_FILE):
+            with open(USERS_BY_EMAIL_FILE, 'r') as f:
+                return json.load(f)
+        return {}
+    except Exception as e:
+        print(f"Error loading users by email: {e}")
+        return {}
+
+def save_users_by_email(users_by_email):
+    """Save email to user_id mapping to file."""
+    try:
+        with open(USERS_BY_EMAIL_FILE, 'w') as f:
+            json.dump(users_by_email, f, indent=2)
+    except Exception as e:
+        print(f"Error saving users by email: {e}")
+
+# Load persistent user storage
+users_db: Dict[str, User] = load_users_db()
+users_by_email: Dict[str, str] = load_users_by_email()  # email -> user_id mapping
 
 
 @router.post("/register", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)
@@ -68,9 +143,13 @@ async def register_user(user_data: UserCreate):
         updated_at=datetime.utcnow()
     )
     
-    # Store user in memory (replace with database operations)
+    # Store user in persistent storage
     users_db[user_id] = user
     users_by_email[user_data.email] = user_id
+    
+    # Save to files
+    save_users_db(users_db)
+    save_users_by_email(users_by_email)
     
     # Create response without sensitive data
     user_out = UserOut(
@@ -145,9 +224,13 @@ async def register_employer(employer_data: EmployerRegistration):
         updated_at=datetime.utcnow()
     )
     
-    # Store user in memory (replace with database operations)
+    # Store user in persistent storage
     users_db[user_id] = user
     users_by_email[employer_data.organization_email] = user_id
+    
+    # Save to files
+    save_users_db(users_db)
+    save_users_by_email(users_by_email)
     
     # Create response without sensitive data
     user_out = UserOut(
@@ -220,9 +303,13 @@ async def register_student(student_data: StudentRegistration):
         updated_at=datetime.utcnow()
     )
     
-    # Store user in memory (replace with database operations)
+    # Store user in persistent storage
     users_db[user_id] = user
     users_by_email[student_data.email] = user_id
+    
+    # Save to files
+    save_users_db(users_db)
+    save_users_by_email(users_by_email)
     
     # Create response without sensitive data
     user_out = UserOut(

@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 import uvicorn
 from contextlib import asynccontextmanager
 
-from app.routers import auth, resumes, jobs, applications, counseling, employers
+from app.routers import auth, resumes, jobs, applications, counseling, employers, ai_analysis
 from app.config import settings
 
 # Lifespan context manager for startup/shutdown events
@@ -61,6 +61,7 @@ app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
 app.include_router(applications.router, prefix="/applications", tags=["Applications"])
 app.include_router(counseling.router, prefix="/counseling", tags=["Career Counseling"])
 app.include_router(employers.router, prefix="/employers", tags=["Employers"])
+app.include_router(ai_analysis.router, prefix="/ai", tags=["AI Analysis"])
 
 # Root endpoint
 @app.get("/")
@@ -123,7 +124,7 @@ if __name__ == "__main__":
         uvicorn.run(
             "main:app",
             host="0.0.0.0",
-            port=8000,
+            port=8001,
             reload=True,
             log_level="info"
         )

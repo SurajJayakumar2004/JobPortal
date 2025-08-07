@@ -6,7 +6,7 @@ FastAPI endpoints for authentication, database access, and other
 common operations.
 """
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
 
@@ -15,6 +15,7 @@ from app.utils.security import verify_token
 
 # Security scheme for Bearer token authentication
 security = HTTPBearer()
+optional_security = HTTPBearer(auto_error=False)
 
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> TokenData:
@@ -98,7 +99,7 @@ def require_student():
     return require_role(UserRole.STUDENT)
 
 
-async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)) -> Optional[TokenData]:
+async def get_optional_user(credentials: Optional[HTTPAuthorizationCredentials] = Depends(optional_security)) -> Optional[TokenData]:
     """
     Dependency to optionally get the current user (for public endpoints that can benefit from user context).
     

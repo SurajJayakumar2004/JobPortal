@@ -41,6 +41,11 @@ export const AuthProvider = ({ children }) => {
       const { data } = response.data; // Backend wraps response in { success: true, data: {...} }
       setUser(data.user);
       setIsAuthenticated(true);
+      
+      // Check if we need to redirect employer on app load
+      if (data.user?.role === 'employer' && window.location.pathname === '/') {
+        window.location.href = '/employer';
+      }
     } catch (error) {
       console.error('Failed to fetch user profile:', error);
       localStorage.removeItem('token');
@@ -62,6 +67,18 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
+   * Check if user should be redirected based on their role
+   * @param {Object} userData - User data
+   * @returns {string} - Redirect path based on user role
+   */
+  const getDefaultRedirectPath = (userData) => {
+    if (userData?.role === 'employer') {
+      return '/employer';
+    }
+    return '/dashboard';
+  };
+
+  /**
    * Logout user and clear authentication data
    */
   const logout = () => {
@@ -77,6 +94,7 @@ export const AuthProvider = ({ children }) => {
     login,
     logout,
     fetchUserProfile,
+    getDefaultRedirectPath,
   };
 
   return (

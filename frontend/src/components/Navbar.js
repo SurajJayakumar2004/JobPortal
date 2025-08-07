@@ -19,17 +19,30 @@ const Navbar = () => {
     navigate('/');
   };
 
+  /**
+   * Get the appropriate home path based on user role
+   */
+  const getHomePath = () => {
+    if (isAuthenticated && user?.role === 'employer') {
+      return '/employer';
+    }
+    return '/';
+  };
+
   return (
     <nav className="navbar">
       <div className="nav-container">
         {/* Brand/Logo */}
-        <Link to="/" className="nav-brand">
+        <Link to={getHomePath()} className="nav-brand">
           🚀 AI Job Portal
         </Link>
 
         {/* Navigation Links */}
         <div className="nav-links">
-          <Link to="/" className="nav-link">Home</Link>
+          {/* Show Home link only for non-employers or unauthenticated users */}
+          {(!isAuthenticated || user?.role !== 'employer') && (
+            <Link to="/" className="nav-link">Home</Link>
+          )}
           
           {isAuthenticated ? (
             // Authenticated user menu

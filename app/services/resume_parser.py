@@ -9,6 +9,7 @@ and provides AI-driven feedback on resume quality and ATS compatibility.
 import os
 import re
 import uuid
+import io
 from typing import Dict, List, Optional, Tuple
 from pathlib import Path
 import fitz  # PyMuPDF
@@ -16,6 +17,12 @@ import docx2txt
 import spacy
 from collections import Counter
 import logging
+try:
+    import pytesseract
+    from PIL import Image
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
 
 from app.schemas import ParsedResumeSection, AIFeedback
 from app.config import settings
@@ -64,6 +71,9 @@ class ResumeParserService:
         """Initialize the resume parser service."""
         self.upload_dir = Path(settings.upload_dir)
         self.upload_dir.mkdir(exist_ok=True)
+        
+        if not OCR_AVAILABLE:
+            logger.warning("OCR not available. Image-based PDFs may not be processed correctly. Install pytesseract and Tesseract for full support.")
     
     async def parse_resume_file(self, file_path: str, filename: str) -> Dict:
         """
@@ -126,20 +136,65 @@ class ResumeParserService:
             raise ValueError(f"Unsupported file type: {file_ext}")
     
     def _extract_text_from_pdf(self, file_path: str) -> str:
-        """Extract text from PDF file using PyMuPDF."""
+        """Extract text from PDF file using PyMuPDF with OCR fallback for image-based PDFs."""
         try:
             doc = fitz.open(file_path)
             text = ""
             
             for page_num in range(len(doc)):
                 page = doc.load_page(page_num)
-                text += page.get_text()
+                page_text = page.get_text()
+                
+                # If no text extracted, try OCR (image-based PDF)
+                if not page_text.strip() and OCR_AVAILABLE:
+                    page_text = self._extract_text_with_ocr(doc, page)
+                
+                text += page_text
             
             doc.close()
             return text
             
         except Exception as e:
             raise ValueError(f"Error extracting text from PDF: {str(e)}")
+    
+    def _extract_text_with_ocr(self, doc, page) -> str:
+        """Extract text from a PDF page using OCR for image-based content."""
+        try:
+            # Get images from the page
+            images = page.get_images(full=True)
+            
+            if not images:
+                return ""
+            
+            extracted_text = ""
+            
+            for img_index, img in enumerate(images):
+                try:
+                    # Get the image
+                    xref = img[0]
+                    pix = fitz.Pixmap(doc, xref)
+                    
+                    # Check if the image is in a suitable format for OCR
+                    if pix.n - pix.alpha < 4:  # GRAY or RGB
+                        # Convert to PIL Image
+                        img_data = pix.tobytes('ppm')
+                        pil_image = Image.open(io.BytesIO(img_data))
+                        
+                        # Use OCR to extract text
+                        ocr_text = pytesseract.image_to_string(pil_image, config='--psm 6')
+                        extracted_text += ocr_text + "\n"
+                    
+                    pix = None  # Free memory
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to process image {img_index} with OCR: {str(e)}")
+                    continue
+            
+            return extracted_text
+            
+        except Exception as e:
+            logger.warning(f"OCR extraction failed: {str(e)}")
+            return ""
     
     def _extract_text_from_docx(self, file_path: str) -> str:
         """Extract text from DOCX file using docx2txt."""

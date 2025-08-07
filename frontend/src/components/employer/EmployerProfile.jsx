@@ -202,52 +202,70 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
 
   if (isLoading && !formData.name) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600"></div>
-        <span className="ml-2">Loading profile...</span>
+      <div className="loading-container">
+        <div className="loading-spinner"></div>
+        <div className="loading-text">Loading company profile...</div>
       </div>
     );
   }
 
   return (
     <div className="employer-profile">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-2xl font-bold text-gray-900">Company Profile</h2>
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h2 className="text-3xl font-bold text-gray-900 mb-2">Company Profile</h2>
+          <p className="text-gray-600">Manage your company information and showcase your brand</p>
+        </div>
         <div className="space-x-3">
           {isEditing ? (
             <>
               <button
                 onClick={() => setIsEditing(false)}
-                className="px-4 py-2 text-gray-600 bg-gray-100 rounded-md hover:bg-gray-200"
+                className="btn-modern-secondary"
                 disabled={isLoading}
               >
+                <span className="mr-2">❌</span>
                 Cancel
               </button>
               <button
                 onClick={handleSave}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                className="btn-modern-primary"
                 disabled={isLoading}
               >
-                {isLoading ? 'Saving...' : 'Save Changes'}
+                {isLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <span className="mr-2">💾</span>
+                    Save Changes
+                  </>
+                )}
               </button>
             </>
           ) : (
             <button
               onClick={() => setIsEditing(true)}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+              className="btn-modern-primary"
             >
+              <span className="mr-2">✏️</span>
               Edit Profile
             </button>
           )}
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-md p-6">
+      <div className="space-y-8">
         {/* Basic Information */}
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Basic Information</h3>
+        <div className="card-modern employer-form">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
+            <span className="mr-2">🏢</span>
+            Basic Information
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Company Name *
               </label>
@@ -256,12 +274,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.name}
                 onChange={(e) => handleInputChange(null, 'name', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="Enter company name"
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Website
               </label>
@@ -270,12 +288,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.website}
                 onChange={(e) => handleInputChange(null, 'website', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="https://www.company.com"
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Industry *
               </label>
@@ -283,7 +301,7 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.industry}
                 onChange={(e) => handleInputChange(null, 'industry', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
               >
                 <option value="">Select industry</option>
                 {industryOptions.map(industry => (
@@ -292,7 +310,7 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
               </select>
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Company Size
               </label>
@@ -300,7 +318,7 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.size}
                 onChange={(e) => handleInputChange(null, 'size', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
               >
                 <option value="">Select company size</option>
                 {companySizes.map(size => (
@@ -309,7 +327,7 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
               </select>
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Founded Year
               </label>
@@ -318,37 +336,40 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.founded}
                 onChange={(e) => handleInputChange(null, 'founded', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="2020"
                 min="1900"
                 max={new Date().getFullYear()}
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Company Logo
               </label>
               {isEditing ? (
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleLogoUpload}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
+                <div className="space-y-3">
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                  <p className="text-xs text-gray-500">Upload a logo (max 5MB, image formats only)</p>
+                </div>
               ) : (
-                <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center">
+                <div className="w-20 h-20 bg-gradient-to-br from-indigo-100 to-purple-100 rounded-xl flex items-center justify-center border-2 border-gray-200">
                   {formData.logo ? (
                     <img src={URL.createObjectURL(formData.logo)} alt="Company Logo" className="w-full h-full object-cover rounded-lg" />
                   ) : (
-                    <span className="text-gray-400">🏢</span>
+                    <span className="text-2xl">🏢</span>
                   )}
                 </div>
               )}
             </div>
           </div>
 
-          <div className="mt-6">
+          <div className="mt-6 form-group">
             <label className="block text-sm font-medium text-gray-700 mb-2">
               Company Description *
             </label>
@@ -357,17 +378,20 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
               onChange={(e) => handleInputChange(null, 'description', e.target.value)}
               disabled={!isEditing}
               rows={4}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
               placeholder="Describe your company, mission, and what makes it unique..."
             />
           </div>
         </div>
 
         {/* Location Information */}
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Location</h3>
+        <div className="card-modern employer-form">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
+            <span className="mr-2">📍</span>
+            Location Information
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="md:col-span-2">
+            <div className="md:col-span-2 form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Address
               </label>
@@ -376,12 +400,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.location.address}
                 onChange={(e) => handleInputChange('location', 'address', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="Street address"
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 City
               </label>
@@ -390,12 +414,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.location.city}
                 onChange={(e) => handleInputChange('location', 'city', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="City"
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 State/Province
               </label>
@@ -404,12 +428,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.location.state}
                 onChange={(e) => handleInputChange('location', 'state', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="State or Province"
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Country
               </label>
@@ -418,12 +442,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.location.country}
                 onChange={(e) => handleInputChange('location', 'country', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="Country"
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Zip/Postal Code
               </label>
@@ -432,7 +456,7 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.location.zipCode}
                 onChange={(e) => handleInputChange('location', 'zipCode', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="Zip or Postal Code"
               />
             </div>
@@ -440,10 +464,13 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
         </div>
 
         {/* Contact Information */}
-        <div className="mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Contact Information</h3>
+        <div className="card-modern employer-form">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
+            <span className="mr-2">📞</span>
+            Contact Information
+          </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Contact Email
               </label>
@@ -452,12 +479,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.contact.email}
                 onChange={(e) => handleInputChange('contact', 'email', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="contact@company.com"
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Phone Number
               </label>
@@ -466,12 +493,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.contact.phone}
                 onChange={(e) => handleInputChange('contact', 'phone', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="+1 (555) 123-4567"
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 LinkedIn Profile
               </label>
@@ -480,12 +507,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.contact.linkedIn}
                 onChange={(e) => handleInputChange('contact', 'linkedIn', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="https://linkedin.com/company/..."
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Twitter Handle
               </label>
@@ -494,7 +521,7 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 value={formData.contact.twitter}
                 onChange={(e) => handleInputChange('contact', 'twitter', e.target.value)}
                 disabled={!isEditing}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="@company"
               />
             </div>
@@ -502,10 +529,13 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
         </div>
 
         {/* Company Culture */}
-        <div>
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Company Culture & Benefits</h3>
+        <div className="card-modern employer-form">
+          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center">
+            <span className="mr-2">🌟</span>
+            Company Culture & Benefits
+          </h3>
           <div className="space-y-6">
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Company Values
               </label>
@@ -514,12 +544,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 onChange={(e) => handleInputChange('culture', 'values', e.target.value)}
                 disabled={!isEditing}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="Describe your company's core values and principles..."
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Benefits & Perks
               </label>
@@ -528,12 +558,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 onChange={(e) => handleInputChange('culture', 'benefits', e.target.value)}
                 disabled={!isEditing}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="List the benefits, perks, and compensation packages you offer..."
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Work Environment
               </label>
@@ -542,12 +572,12 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 onChange={(e) => handleInputChange('culture', 'workEnvironment', e.target.value)}
                 disabled={!isEditing}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="Describe your work environment, culture, and team dynamics..."
               />
             </div>
 
-            <div>
+            <div className="form-group">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Diversity & Inclusion
               </label>
@@ -556,7 +586,7 @@ const EmployerProfile = ({ companyProfile, setCompanyProfile }) => {
                 onChange={(e) => handleInputChange('culture', 'diversity', e.target.value)}
                 disabled={!isEditing}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50"
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-gray-50 disabled:text-gray-600"
                 placeholder="Share your commitment to diversity, inclusion, and equal opportunity..."
               />
             </div>

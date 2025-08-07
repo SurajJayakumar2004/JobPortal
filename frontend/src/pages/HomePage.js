@@ -1,15 +1,24 @@
 /**
  * Homepage component that serves as the landing page.
  * Displays job listings and provides entry point to the application.
+ * Automatically redirects employers to their dashboard.
  */
 
-import React from 'react';
-import { Link } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import JobList from '../components/JobList';
 
 const HomePage = () => {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const navigate = useNavigate();
+
+  // Redirect employers to their dashboard
+  useEffect(() => {
+    if (isAuthenticated && user?.role === 'employer') {
+      navigate('/employer');
+    }
+  }, [isAuthenticated, user, navigate]);
 
   return (
     <div className="homepage">
@@ -24,6 +33,7 @@ const HomePage = () => {
             </p>
             <div className="hero-actions">
               {isAuthenticated ? (
+                // Show dashboard link for authenticated job seekers (employers are redirected)
                 <Link to="/dashboard" className="btn btn-primary">
                   Go to Dashboard
                 </Link>

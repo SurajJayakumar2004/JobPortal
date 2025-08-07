@@ -54,8 +54,12 @@ const LoginPage = () => {
       // Store token and update auth state
       login(access_token, user);
       
-      // Navigate to dashboard
-      navigate('/dashboard');
+      // Navigate based on user role
+      if (user.role === 'employer') {
+        navigate('/employer');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (error) {
       console.error('Login error:', error);
       

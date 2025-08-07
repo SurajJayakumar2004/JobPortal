@@ -14,11 +14,9 @@ import JobPostingManager from '../components/employer/JobPostingManager';
 import JobListingDashboard from '../components/employer/JobListingDashboard';
 import CandidateManager from '../components/employer/CandidateManager';
 import AIRecommendations from '../components/employer/AIRecommendations';
-import CommunicationCenter from '../components/employer/CommunicationCenter';
 import ApplicationTracker from '../components/employer/ApplicationTracker';
-import AnalyticsDashboard from '../components/employer/AnalyticsDashboard';
-import BillingManager from '../components/employer/BillingManager';
 import SecuritySettings from '../components/employer/SecuritySettings';
+import dataService from '../services/dataService';
 
 const EmployerDashboard = () => {
   const { user } = useAuth();
@@ -46,18 +44,25 @@ const EmployerDashboard = () => {
 
   const initializeDashboard = async () => {
     try {
-      // Fetch company profile and dashboard statistics
-      // This would typically call the backend API
-      // For now, we'll use mock data
+      // Fetch dashboard statistics from data service
+      const stats = await dataService.getJobStatistics();
       setDashboardStats({
-        activeJobs: 12,
-        totalApplications: 156,
-        newApplications: 23,
-        interviewsScheduled: 8,
-        hiredCandidates: 3
+        activeJobs: stats.active_jobs,
+        totalApplications: stats.total_applications,
+        newApplications: Math.floor(stats.total_applications * 0.2), // Simulate 20% new applications
+        interviewsScheduled: Math.floor(stats.total_applications * 0.1), // Simulate 10% interviews
+        hiredCandidates: Math.floor(stats.total_applications * 0.05) // Simulate 5% hired
       });
     } catch (error) {
       console.error('Failed to initialize employer dashboard:', error);
+      // Fallback to default values
+      setDashboardStats({
+        activeJobs: 0,
+        totalApplications: 0,
+        newApplications: 0,
+        interviewsScheduled: 0,
+        hiredCandidates: 0
+      });
     }
   };
 
@@ -67,10 +72,7 @@ const EmployerDashboard = () => {
     { id: 'jobs', label: 'Job Management', icon: '💼' },
     { id: 'candidates', label: 'Candidates', icon: '👥' },
     { id: 'ai-recommendations', label: 'AI Matching', icon: '🤖' },
-    { id: 'communications', label: 'Communications', icon: '💬' },
     { id: 'ats', label: 'Application Tracking', icon: '📋' },
-    { id: 'analytics', label: 'Analytics & Reports', icon: '📈' },
-    { id: 'billing', label: 'Billing & Plans', icon: '💳' },
     { id: 'security', label: 'Security Settings', icon: '🔒' }
   ];
 
@@ -229,14 +231,8 @@ const EmployerDashboard = () => {
         return <CandidateManager />;
       case 'ai-recommendations':
         return <AIRecommendations />;
-      case 'communications':
-        return <CommunicationCenter />;
       case 'ats':
         return <ApplicationTracker />;
-      case 'analytics':
-        return <AnalyticsDashboard />;
-      case 'billing':
-        return <BillingManager />;
       case 'security':
         return <SecuritySettings />;
       default:
@@ -256,23 +252,23 @@ const EmployerDashboard = () => {
   }
 
   return (
-    <div className="employer-dashboard min-h-screen bg-gray-50">
+    <div className="employer-dashboard min-h-screen">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Tab Navigation */}
+        {/* Enhanced Tab Navigation */}
         <div className="mb-8">
           <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8 overflow-x-auto">
+            <nav className="flex space-x-2 overflow-x-auto bg-white rounded-2xl shadow-sm p-2">
               {tabConfig.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
-                  className={`whitespace-nowrap py-2 px-1 border-b-2 font-medium text-sm ${
+                  className={`flex items-center whitespace-nowrap py-3 px-4 rounded-xl font-semibold text-sm transition-all duration-300 ${
                     activeTab === tab.id
-                      ? 'border-indigo-500 text-indigo-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                      ? 'bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow-lg transform scale-105'
+                      : 'text-gray-600 hover:text-gray-800 hover:bg-gray-50'
                   }`}
                 >
-                  <span className="mr-2">{tab.icon}</span>
+                  <span className="mr-2 text-base">{tab.icon}</span>
                   {tab.label}
                 </button>
               ))}
