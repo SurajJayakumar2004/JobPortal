@@ -360,6 +360,17 @@ async def login_user(login_data: UserLogin):
         )
     
     user_id = users_by_email[login_data.email]
+    
+    # Check if user exists in users_db (handle data consistency)
+    if user_id not in users_db:
+        # Remove from users_by_email to fix inconsistency
+        del users_by_email[login_data.email]
+        save_users_by_email(users_by_email)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User account not found. Please register again."
+        )
+    
     user = users_db[user_id]
     
     # Verify password

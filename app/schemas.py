@@ -225,7 +225,7 @@ class JobUpdate(BaseModel):
 
 class JobOut(BaseModel):
     """Model for job response."""
-    id: str = Field(alias="_id")
+    _id: str  # Use _id directly to match frontend expectations
     employer_id: str
     title: str
     description: str
@@ -454,6 +454,43 @@ class ErrorResponse(BaseModel):
     message: str
     error_code: Optional[str] = None
     details: Optional[Dict[str, Any]] = None
+
+
+# Job Generator Models
+class JobPosting(BaseModel):
+    """Model for job posting data used in job generation."""
+    title: str
+    company: str
+    location: str
+    department: Optional[str] = None
+    employment_type: Optional[str] = None
+    experience_level: Optional[str] = None
+    salary_range: Optional[str] = None
+    required_skills: List[str] = []
+    preferred_skills: List[str] = []
+    description: Optional[str] = None
+    responsibilities: List[str] = []
+    qualifications: List[str] = []
+    benefits: List[str] = []
+
+
+class PersonalizedInsightsRequest(BaseModel):
+    """Request model for personalized career insights."""
+    candidate_id: str
+    job_id: str
+    resume_text: Optional[str] = None
+
+
+class PersonalizedInsightsResponse(BaseModel):
+    """Response model for personalized career insights."""
+    candidate_id: str
+    job_id: str
+    professional_insights: str
+    career_recommendations: List[str]
+    skill_breakdown: Dict[str, Any]
+    suggested_career_paths: List[Dict[str, Any]]
+    priority_skills: List[Dict[str, Any]]
+    learning_timeline: Dict[str, Any]
 
 
 # AI Analysis Models

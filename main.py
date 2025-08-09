@@ -11,7 +11,8 @@ from fastapi.responses import JSONResponse
 import uvicorn
 from contextlib import asynccontextmanager
 
-from app.routers import auth, resumes, jobs, applications, counseling, employers, ai_analysis
+from app.routers import auth, jobs, applications, employers, counseling, job_generator  # resumes temporarily disabled
+# from app.routers.ai_analysis import router as ai_analysis_router  # Temporarily disabled
 from app.config import settings
 
 # Lifespan context manager for startup/shutdown events
@@ -48,20 +49,23 @@ app = FastAPI(
 # Configure CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:8080"],  # Frontend URLs
+    allow_origins=["http://localhost:3000", "http://localhost:3001", "http://localhost:8080"],  # Frontend URLs
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
-app.include_router(auth.router, prefix="/auth", tags=["Authentication"])
-app.include_router(resumes.router, prefix="/resumes", tags=["Resumes"])
-app.include_router(jobs.router, prefix="/jobs", tags=["Jobs"])
-app.include_router(applications.router, prefix="/applications", tags=["Applications"])
-app.include_router(counseling.router, prefix="/counseling", tags=["Career Counseling"])
-app.include_router(employers.router, prefix="/employers", tags=["Employers"])
-app.include_router(ai_analysis.router, prefix="/ai", tags=["AI Analysis"])
+# Include routers with proper prefixes
+# Include API routers
+app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
+# app.include_router(resumes.router, prefix="/api/resumes", tags=["Resumes"])  # Temporarily disabled
+app.include_router(applications.router, prefix="/api/applications", tags=["Applications"])
+app.include_router(employers.router, prefix="/api/employers", tags=["Employers"])
+app.include_router(counseling.router, prefix="/api/counseling", tags=["Career Counseling"])
+app.include_router(job_generator.router, prefix="/api/job-generator", tags=["Job Generator"])
+# app.include_router(ai_analysis_router, prefix="/api/ai", tags=["AI Analysis"])  # Temporarily disabled
 
 # Root endpoint
 @app.get("/")

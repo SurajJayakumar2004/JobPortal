@@ -85,7 +85,7 @@ export const authAPI = {
    * @param {string} userData.password - User password
    * @param {string} userData.role - User role (student/employer)
    */
-  register: (userData) => api.post('/auth/register', userData),
+  register: (userData) => api.post('/api/auth/register', userData),
 
   /**
    * Register a new employer with organization details
@@ -96,7 +96,7 @@ export const authAPI = {
    * @param {string} employerData.phone_number - Phone number
    * @param {string} employerData.password - Password
    */
-  registerEmployer: (employerData) => api.post('/auth/register/employer', employerData),
+  registerEmployer: (employerData) => api.post('/api/auth/register/employer', employerData),
 
   /**
    * Register a new student with personal details
@@ -106,7 +106,7 @@ export const authAPI = {
    * @param {string} studentData.phone_number - Phone number (optional)
    * @param {string} studentData.password - Password
    */
-  registerStudent: (studentData) => api.post('/auth/register/student', studentData),
+  registerStudent: (studentData) => api.post('/api/auth/register/student', studentData),
 
   /**
    * Login user with email and password
@@ -115,7 +115,7 @@ export const authAPI = {
    * @param {string} credentials.password - User password
    */
   login: (credentials) => {
-    return api.post('/auth/login', {
+    return api.post('/api/auth/login', {
       email: credentials.username, // Backend expects 'email' field
       password: credentials.password
     });
@@ -128,7 +128,7 @@ export const userAPI = {
    * Get current user profile data
    * Requires authentication token
    */
-  getProfile: () => api.get('/auth/me'),
+  getProfile: () => api.get('/api/auth/me'),
 };
 
 // Resume API calls
@@ -141,7 +141,7 @@ export const resumeAPI = {
     const formData = new FormData();
     formData.append('file', file);
     
-    return api.post('/resumes/upload', formData, {
+    return api.post('/api/resumes/upload', formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -152,7 +152,7 @@ export const resumeAPI = {
    * Get AI feedback for a specific resume
    * @param {string} resumeId - Resume ID
    */
-  getFeedback: (resumeId) => api.get(`/resumes/${resumeId}/feedback`),
+  getFeedback: (resumeId) => api.get(`/api/resumes/${resumeId}/feedback`),
 };
 
 // Jobs API calls
@@ -161,25 +161,25 @@ export const jobsAPI = {
    * Get all available jobs (public endpoint)
    * @param {Object} params - Query parameters for filtering
    */
-  getJobs: (params = {}) => api.get('/jobs', { params }),
+  getJobs: (params = {}) => api.get('/api/jobs', { params }),
 
   /**
    * Get specific job details by ID
    * @param {string} jobId - Job ID
    */
-  getJobById: (jobId) => api.get(`/jobs/${jobId}`),
+  getJobById: (jobId) => api.get(`/api/jobs/${jobId}`),
 
   /**
    * Create a new job posting (employer only)
    * @param {Object} jobData - Job posting data
    */
-  createJob: (jobData) => api.post('/jobs', jobData),
+  createJob: (jobData) => api.post('/api/jobs', jobData),
 
   /**
    * Get candidates for a specific job (employer only)
    * @param {string} jobId - Job ID
    */
-  getJobCandidates: (jobId) => api.get(`/jobs/${jobId}/candidates`),
+  getJobCandidates: (jobId) => api.get(`/api/jobs/${jobId}/candidates`),
 };
 
 // Export the configured axios instance as default

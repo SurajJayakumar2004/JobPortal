@@ -390,14 +390,14 @@ class MatchingService:
         job_requirements: List[str]
     ) -> Dict[str, float]:
         """
-        Calculate detailed skill gap analysis.
+        Calculate detailed skill gap analysis with personalized insights.
         
         Args:
             candidate_skills: List of candidate skills
             job_requirements: List of job requirements
             
         Returns:
-            Dict with gap analysis metrics
+            Dict with comprehensive gap analysis metrics and personalized recommendations
         """
         matching_skills, missing_skills = self._analyze_skill_match(
             candidate_skills, job_requirements
@@ -410,17 +410,28 @@ class MatchingService:
                 'gap_score': 0.0,
                 'critical_gaps': 0,
                 'matching_skills_count': 0,
-                'missing_skills_count': 0
+                'missing_skills_count': 0,
+                'personalized_insights': {
+                    'professional_insights': ['No specific requirements to analyze'],
+                    'career_recommendations': ['Continue developing general skills'],
+                    'priority_skills': [],
+                    'learning_timeline': 'N/A'
+                }
             }
         
         skill_coverage = (len(matching_skills) / total_requirements) * 100
         gap_score = (len(missing_skills) / total_requirements) * 100
         
         # Identify critical gaps (high importance skills)
-        critical_skills = ['python', 'java', 'sql', 'aws', 'react', 'machine learning']
+        critical_skills = ['python', 'java', 'sql', 'aws', 'react', 'machine learning', 'data science']
         critical_gaps = sum(
             1 for skill in missing_skills 
             if any(critical.lower() in skill.lower() for critical in critical_skills)
+        )
+        
+        # Generate personalized insights
+        personalized_insights = self._generate_personalized_career_insights(
+            candidate_skills, job_requirements, matching_skills, missing_skills, skill_coverage
         )
         
         return {
@@ -430,5 +441,361 @@ class MatchingService:
             'matching_skills_count': len(matching_skills),
             'missing_skills_count': len(missing_skills),
             'matching_skills': matching_skills,
-            'missing_skills': missing_skills
+            'missing_skills': missing_skills,
+            'personalized_insights': personalized_insights
+        }
+    
+    def _generate_personalized_career_insights(
+        self,
+        candidate_skills: List[str],
+        job_requirements: List[str],
+        matching_skills: List[str],
+        missing_skills: List[str],
+        skill_coverage: float
+    ) -> Dict:
+        """
+        Generate comprehensive personalized career insights for students.
+        
+        Args:
+            candidate_skills: Current candidate skills
+            job_requirements: Required job skills
+            matching_skills: Skills that match
+            missing_skills: Skills that are missing
+            skill_coverage: Percentage of skill coverage
+            
+        Returns:
+            Dict with personalized insights and recommendations
+        """
+        
+        # Professional Insights
+        professional_insights = []
+        if skill_coverage >= 80:
+            professional_insights.extend([
+                f"Excellent match! You possess {len(matching_skills)} of {len(job_requirements)} required skills ({skill_coverage:.1f}% coverage)",
+                "You are well-positioned for this role and should confidently apply",
+                "Focus on showcasing your matching skills through portfolio projects",
+                "Consider this role as an immediate career opportunity"
+            ])
+        elif skill_coverage >= 60:
+            professional_insights.extend([
+                f"Strong foundation! You have {len(matching_skills)} of {len(job_requirements)} required skills ({skill_coverage:.1f}% coverage)",
+                "You have good potential for this role with some skill development",
+                "Focusing on the missing skills will significantly improve your competitiveness",
+                "Consider applying while continuing to develop missing competencies"
+            ])
+        elif skill_coverage >= 40:
+            professional_insights.extend([
+                f"Developing foundation! You possess {len(matching_skills)} of {len(job_requirements)} required skills ({skill_coverage:.1f}% coverage)",
+                "This role represents a growth opportunity that requires focused skill development",
+                "Prioritize learning the missing skills before applying to maximize success",
+                "Consider entry-level positions in related areas to build experience"
+            ])
+        else:
+            professional_insights.extend([
+                f"Early stage match! You have {len(matching_skills)} of {len(job_requirements)} required skills ({skill_coverage:.1f}% coverage)",
+                "This role is a longer-term career goal requiring significant skill development",
+                "Focus on building foundational skills in this domain",
+                "Consider this as a 6-12 month development target"
+            ])
+        
+        # Career Recommendations
+        career_recommendations = []
+        
+        # General recommendations
+        career_recommendations.extend([
+            "Build a portfolio showcasing your existing skills through real projects",
+            "Network with professionals in your target industry through LinkedIn and events",
+            "Consider informational interviews to learn about day-to-day responsibilities"
+        ])
+        
+        # Skill-specific recommendations
+        if missing_skills:
+            career_recommendations.append(f"Focus on developing these key skills: {', '.join(missing_skills[:3])}")
+            
+            # Programming skills
+            programming_skills = [skill for skill in missing_skills if any(prog in skill.lower() 
+                                 for prog in ['python', 'java', 'javascript', 'sql', 'programming'])]
+            if programming_skills:
+                career_recommendations.append("Consider online coding bootcamps or courses for programming skills")
+                
+            # Design skills
+            design_skills = [skill for skill in missing_skills if any(design in skill.lower() 
+                           for design in ['design', 'figma', 'adobe', 'ui', 'ux'])]
+            if design_skills:
+                career_recommendations.append("Practice design skills through daily UI challenges and design projects")
+                
+            # Cloud/DevOps skills
+            cloud_skills = [skill for skill in missing_skills if any(cloud in skill.lower() 
+                          for cloud in ['aws', 'azure', 'cloud', 'docker', 'kubernetes'])]
+            if cloud_skills:
+                career_recommendations.append("Start with cloud certification programs and hands-on labs")
+        
+        # Experience level recommendations
+        if skill_coverage < 50:
+            career_recommendations.extend([
+                "Consider internships or entry-level positions to gain practical experience",
+                "Look for mentorship opportunities with experienced professionals"
+            ])
+        
+        # Priority Skills Development
+        priority_skills = []
+        for i, skill in enumerate(missing_skills[:5]):  # Top 5 missing skills
+            priority_level = "High" if i < 2 else "Medium" if i < 4 else "Low"
+            estimated_time = self._estimate_learning_time(skill)
+            
+            priority_skills.append({
+                "skill": skill,
+                "priority": priority_level,
+                "estimated_learning_time": estimated_time,
+                "learning_resources": self._suggest_skill_resources(skill),
+                "importance_reason": self._explain_skill_importance(skill, job_requirements)
+            })
+        
+        # Suggested Career Paths
+        suggested_paths = self._generate_career_progression_paths(candidate_skills, job_requirements)
+        
+        # Learning Timeline
+        learning_timeline = self._calculate_personalized_timeline(missing_skills, skill_coverage)
+        
+        return {
+            "professional_insights": professional_insights,
+            "career_recommendations": career_recommendations,
+            "skill_breakdown": {
+                "matching_skills": matching_skills,
+                "missing_skills": missing_skills,
+                "skill_match_percentage": round(skill_coverage, 1),
+                "total_skills_assessed": len(job_requirements),
+                "candidate_skills_count": len(candidate_skills)
+            },
+            "priority_skills_to_develop": priority_skills,
+            "suggested_career_paths": suggested_paths,
+            "learning_timeline": learning_timeline
+        }
+    
+    def _estimate_learning_time(self, skill: str) -> str:
+        """Estimate learning time for a specific skill."""
+        skill_lower = skill.lower()
+        
+        time_estimates = {
+            'python': '2-3 months',
+            'javascript': '2-3 months', 
+            'sql': '1-2 months',
+            'react': '3-4 months',
+            'machine learning': '4-6 months',
+            'aws': '2-3 months',
+            'azure': '2-3 months',
+            'docker': '1-2 months',
+            'kubernetes': '3-4 months',
+            'git': '2-4 weeks',
+            'figma': '3-4 weeks',
+            'adobe': '2-3 months',
+            'communication': 'Ongoing',
+            'leadership': 'Ongoing'
+        }
+        
+        for key, time in time_estimates.items():
+            if key in skill_lower:
+                return time
+        
+        return '2-3 months'  # Default
+    
+    def _suggest_skill_resources(self, skill: str) -> List[Dict]:
+        """Suggest learning resources for a specific skill."""
+        skill_lower = skill.lower()
+        
+        resources_map = {
+            'python': [
+                {"type": "Course", "name": "Python for Everybody (Coursera)", "cost": "Free"},
+                {"type": "Practice", "name": "LeetCode Python Track", "cost": "Free/Premium"},
+                {"type": "Book", "name": "Automate the Boring Stuff", "cost": "$30"}
+            ],
+            'javascript': [
+                {"type": "Course", "name": "JavaScript30 by Wes Bos", "cost": "Free"},
+                {"type": "Platform", "name": "freeCodeCamp", "cost": "Free"},
+                {"type": "Book", "name": "You Don't Know JS", "cost": "Free online"}
+            ],
+            'sql': [
+                {"type": "Course", "name": "SQL Basics (Khan Academy)", "cost": "Free"},
+                {"type": "Practice", "name": "SQLBolt Interactive Lessons", "cost": "Free"},
+                {"type": "Platform", "name": "HackerRank SQL", "cost": "Free"}
+            ],
+            'react': [
+                {"type": "Course", "name": "React Official Tutorial", "cost": "Free"},
+                {"type": "Course", "name": "React for Beginners (Wes Bos)", "cost": "$97"},
+                {"type": "Practice", "name": "React Challenges", "cost": "Free"}
+            ],
+            'aws': [
+                {"type": "Course", "name": "AWS Cloud Practitioner", "cost": "Free tier"},
+                {"type": "Platform", "name": "A Cloud Guru", "cost": "$35/month"},
+                {"type": "Practice", "name": "AWS Free Tier Labs", "cost": "Free"}
+            ]
+        }
+        
+        # Find matching resources
+        for key, resources in resources_map.items():
+            if key in skill_lower:
+                return resources
+        
+        # Default resources
+        return [
+            {"type": "Search", "name": f"{skill} online courses", "cost": "Varies"},
+            {"type": "Practice", "name": f"{skill} practice projects", "cost": "Free"},
+            {"type": "Documentation", "name": f"Official {skill} docs", "cost": "Free"}
+        ]
+    
+    def _explain_skill_importance(self, skill: str, job_requirements: List[str]) -> str:
+        """Explain why a skill is important for the job."""
+        skill_lower = skill.lower()
+        
+        importance_map = {
+            'python': 'Essential programming language for backend development, data analysis, and automation',
+            'javascript': 'Core language for web development and interactive user interfaces',
+            'sql': 'Critical for database operations and data manipulation in most technical roles',
+            'react': 'Popular frontend framework for building modern web applications',
+            'machine learning': 'Key technology for AI-driven features and data insights',
+            'aws': 'Leading cloud platform essential for modern application deployment',
+            'git': 'Industry standard for version control and collaborative development',
+            'communication': 'Essential soft skill for teamwork, presentations, and client interactions',
+            'problem solving': 'Core competency for analyzing challenges and developing solutions'
+        }
+        
+        for key, importance in importance_map.items():
+            if key in skill_lower:
+                return importance
+        
+        return f"Important skill that enhances job performance and career growth"
+    
+    def _generate_career_progression_paths(self, candidate_skills: List[str], job_requirements: List[str]) -> List[Dict]:
+        """Generate potential career progression paths."""
+        
+        # Analyze skill categories
+        tech_skills = [skill for skill in candidate_skills if any(tech in skill.lower() 
+                      for tech in ['python', 'java', 'sql', 'programming', 'development'])]
+        
+        design_skills = [skill for skill in candidate_skills if any(design in skill.lower() 
+                        for design in ['design', 'ui', 'ux', 'figma', 'adobe'])]
+        
+        data_skills = [skill for skill in candidate_skills if any(data in skill.lower() 
+                      for data in ['data', 'analytics', 'sql', 'statistics', 'machine learning'])]
+        
+        paths = []
+        
+        # Technology path
+        if tech_skills:
+            paths.append({
+                "path_name": "Software Development Track",
+                "description": "Progress through development roles with increasing responsibility",
+                "steps": [
+                    {"role": "Junior Developer", "timeline": "0-2 years", "skills_needed": ["Basic programming", "Git", "Debugging"]},
+                    {"role": "Software Developer", "timeline": "2-4 years", "skills_needed": ["Advanced programming", "System design", "Testing"]},
+                    {"role": "Senior Developer", "timeline": "4-6 years", "skills_needed": ["Architecture", "Mentoring", "Technical leadership"]},
+                    {"role": "Tech Lead/Architect", "timeline": "6+ years", "skills_needed": ["Strategic thinking", "Team management", "Innovation"]}
+                ],
+                "growth_potential": "High",
+                "average_salary_range": "$60k - $180k+"
+            })
+        
+        # Data path
+        if data_skills:
+            paths.append({
+                "path_name": "Data Science Track",
+                "description": "Specialize in data analysis and machine learning",
+                "steps": [
+                    {"role": "Data Analyst", "timeline": "0-2 years", "skills_needed": ["SQL", "Excel", "Basic statistics"]},
+                    {"role": "Data Scientist", "timeline": "2-4 years", "skills_needed": ["Python/R", "Machine learning", "Visualization"]},
+                    {"role": "Senior Data Scientist", "timeline": "4-6 years", "skills_needed": ["Deep learning", "Research", "Business strategy"]},
+                    {"role": "Chief Data Officer", "timeline": "6+ years", "skills_needed": ["Leadership", "Strategy", "Innovation"]}
+                ],
+                "growth_potential": "Very High",
+                "average_salary_range": "$70k - $200k+"
+            })
+        
+        # Design path
+        if design_skills:
+            paths.append({
+                "path_name": "UX/UI Design Track",
+                "description": "Create user-centered design solutions",
+                "steps": [
+                    {"role": "Junior UX/UI Designer", "timeline": "0-2 years", "skills_needed": ["Design tools", "User research", "Wireframing"]},
+                    {"role": "UX/UI Designer", "timeline": "2-4 years", "skills_needed": ["Advanced prototyping", "Design systems", "User testing"]},
+                    {"role": "Senior Designer", "timeline": "4-6 years", "skills_needed": ["Design strategy", "Team collaboration", "Innovation"]},
+                    {"role": "Design Director", "timeline": "6+ years", "skills_needed": ["Leadership", "Business acumen", "Vision"]}
+                ],
+                "growth_potential": "High",
+                "average_salary_range": "$55k - $150k+"
+            })
+        
+        # Default general path
+        if not paths:
+            paths.append({
+                "path_name": "General Technology Track",
+                "description": "Flexible career path adaptable to various technology roles",
+                "steps": [
+                    {"role": "Entry Level Position", "timeline": "0-1 years", "skills_needed": ["Basic technical skills", "Communication"]},
+                    {"role": "Specialist Role", "timeline": "1-3 years", "skills_needed": ["Domain expertise", "Problem solving"]},
+                    {"role": "Senior Specialist", "timeline": "3-5 years", "skills_needed": ["Advanced skills", "Mentoring"]},
+                    {"role": "Team Lead", "timeline": "5+ years", "skills_needed": ["Leadership", "Strategic thinking"]}
+                ],
+                "growth_potential": "Medium to High",
+                "average_salary_range": "$50k - $130k+"
+            })
+        
+        return paths
+    
+    def _calculate_personalized_timeline(self, missing_skills: List[str], skill_coverage: float) -> Dict:
+        """Calculate personalized learning timeline with milestones."""
+        
+        # Base timeline calculation
+        base_weeks = len(missing_skills) * 6  # 6 weeks per skill average
+        
+        # Adjust based on current skill coverage
+        if skill_coverage >= 70:
+            base_weeks *= 0.7  # Faster learning with good foundation
+        elif skill_coverage >= 50:
+            base_weeks *= 0.85  # Moderate adjustment
+        elif skill_coverage < 30:
+            base_weeks *= 1.3  # Need more time for foundational learning
+        
+        timeline_months = max(1, int(base_weeks / 4))
+        
+        # Generate milestones
+        milestones = []
+        skills_per_milestone = max(1, len(missing_skills) // 4)
+        
+        for i in range(min(4, len(missing_skills))):
+            milestone_month = int((i + 1) * (timeline_months / 4))
+            skills_count = min(skills_per_milestone, len(missing_skills) - i * skills_per_milestone)
+            
+            milestones.append({
+                "month": milestone_month,
+                "goal": f"Master {skills_count} priority skill{'s' if skills_count > 1 else ''}",
+                "deliverable": f"Complete {skills_count} portfolio project{'s' if skills_count > 1 else ''}",
+                "skills_focus": missing_skills[i * skills_per_milestone:(i + 1) * skills_per_milestone]
+            })
+        
+        # Final milestone
+        milestones.append({
+            "month": timeline_months,
+            "goal": "Job application readiness",
+            "deliverable": "Complete portfolio, updated resume, and interview preparation",
+            "skills_focus": ["All target skills integrated"]
+        })
+        
+        # Confidence assessment
+        confidence_level = "High" if skill_coverage >= 70 else \
+                          "Medium" if skill_coverage >= 50 else \
+                          "Requires dedication"
+        
+        return {
+            "estimated_months": timeline_months,
+            "confidence_level": confidence_level,
+            "weekly_time_commitment": "10-15 hours recommended",
+            "total_learning_hours": base_weeks * 10,  # 10 hours per week
+            "milestones": milestones,
+            "success_factors": [
+                "Consistent daily practice",
+                "Building real projects",
+                "Seeking feedback from experts",
+                "Joining professional communities"
+            ]
         }

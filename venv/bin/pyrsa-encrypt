@@ -1,4 +1,4 @@
-#!/Users/surajj/Desktop/JobPortal/venv/bin/python3.11
+#!/Users/surajj/Desktop/JobPortal1/venv/bin/python3.11
 import sys
 from rsa.cli import encrypt
 if __name__ == '__main__':

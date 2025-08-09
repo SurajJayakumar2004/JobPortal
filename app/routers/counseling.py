@@ -29,8 +29,13 @@ counseling_reports_db: Dict[str, CounselingReport] = {}
 user_reports: Dict[str, List[str]] = {}  # user_id -> [report_ids]
 
 # Import from other modules
-from app.routers.resumes import resumes_db, user_resumes
+from app.routers.jobs import jobs_db
+# from app.routers.resumes import resumes_db, user_resumes  # Temporarily disabled
 from app.routers.auth import users_db
+
+# Temporary placeholders for disabled resumes functionality
+resumes_db = {}
+user_resumes = {}
 
 # Initialize counseling service
 counseling_service = CounselingService()

@@ -1,12 +1,14 @@
 /**
  * AI-Powered Candidate Matching & Recommendations Component
  * Provides intelligent candidate screening, job matching, and hiring insights
+ * Enhanced with personalized student career insights
  */
 
 import React, { useState, useEffect } from 'react';
 import { useToast } from '../Toast';
 import dataService from '../../services/dataService';
 import aiMatchingAPI from '../../services/aiMatchingAPI';
+import PersonalizedInsightsPanel from './PersonalizedInsightsPanel';
 
 const AIRecommendations = () => {
   const { showSuccess, showError, showInfo } = useToast();
@@ -19,6 +21,9 @@ const AIRecommendations = () => {
   const [jobInsights, setJobInsights] = useState(null);
   const [selectedCandidate, setSelectedCandidate] = useState(null);
   const [skillGapAnalysis, setSkillGapAnalysis] = useState(null);
+  const [candidateInsights, setCandidateInsights] = useState(null);
+  const [loadingInsights, setLoadingInsights] = useState(false);
+  const [showPersonalizedInsights, setShowPersonalizedInsights] = useState(false);
 
   useEffect(() => {
     loadInitialData();
@@ -93,6 +98,24 @@ const AIRecommendations = () => {
     }
   };
 
+  const loadCandidateInsights = async (candidate) => {
+    if (!candidate || !candidate.resume_url) return;
+    
+    setLoadingInsights(true);
+    try {
+      // Load personalized insights for the candidate
+      const insights = await aiMatchingAPI.analyzeResume(candidate.resume_url);
+      setCandidateInsights(insights);
+      setSelectedCandidate(candidate);
+      showSuccess('Candidate insights loaded successfully');
+    } catch (error) {
+      console.error('Error loading candidate insights:', error);
+      showError('Failed to load candidate insights');
+    } finally {
+      setLoadingInsights(false);
+    }
+  };
+
   const getMatchScoreColor = (score) => {
     if (score >= 90) return 'bg-gradient-to-r from-green-400 to-green-600';
     if (score >= 80) return 'bg-gradient-to-r from-blue-400 to-blue-600';
@@ -107,6 +130,16 @@ const AIRecommendations = () => {
     if (score >= 70) return 'Good Match';
     if (score >= 60) return 'Fair Match';
     return 'Weak Match';
+  };
+
+  const openPersonalizedInsights = (candidate) => {
+    setSelectedCandidate(candidate);
+    setShowPersonalizedInsights(true);
+  };
+
+  const closePersonalizedInsights = () => {
+    setShowPersonalizedInsights(false);
+    setSelectedCandidate(null);
   };
 
   const renderCandidateMatching = () => (
@@ -275,6 +308,14 @@ const AIRecommendations = () => {
                     >
                       <span className="mr-1">📊</span>
                       Skill Gap Analysis
+                    </button>
+                    <button 
+                      onClick={() => openPersonalizedInsights(candidate)}
+                      className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded-lg text-sm font-medium transition-colors duration-200"
+                      title="View personalized career insights and recommendations"
+                    >
+                      <span className="mr-1">🎯</span>
+                      Career Insights
                     </button>
                     <button className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors duration-200">
                       <span className="mr-1">�</span>
@@ -612,6 +653,15 @@ const AIRecommendations = () => {
       {activeTab === 'insights' && renderJobInsights()}
       {activeTab === 'analytics' && renderEmployerStats()}
       {activeTab === 'skillgap' && renderSkillGapAnalysis()}
+      
+      {/* Personalized Insights Modal */}
+      {showPersonalizedInsights && selectedCandidate && selectedJob && (
+        <PersonalizedInsightsPanel
+          candidate={selectedCandidate}
+          jobData={selectedJob}
+          onClose={closePersonalizedInsights}
+        />
+      )}
     </div>
   );
 };

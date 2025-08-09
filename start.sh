@@ -16,11 +16,11 @@ if [ ! -f "venv/bin/uvicorn" ]; then
 fi
 
 # Start the application
-echo "📡 Starting server at http://localhost:8000"
-echo "📚 API Documentation: http://localhost:8000/docs"
-echo "📖 Alternative docs: http://localhost:8000/redoc"
+echo "📡 Starting server at http://localhost:8001"
+echo "📚 API Documentation: http://localhost:8001/docs"
+echo "📖 Alternative docs: http://localhost:8001/redoc"
 echo ""
 echo "Press Ctrl+C to stop the server"
 echo ""
 
-./venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8000
+./venv/bin/uvicorn main:app --reload --host 0.0.0.0 --port 8001

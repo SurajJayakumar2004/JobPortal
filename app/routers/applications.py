@@ -34,8 +34,12 @@ job_applications: Dict[str, List[str]] = {}  # job_id -> [application_ids]
 
 # Import from other modules (these would be from database in production)
 from app.routers.jobs import jobs_db
-from app.routers.resumes import resumes_db, user_resumes
+# from app.routers.resumes import resumes_db, user_resumes  # Temporarily disabled
 from app.routers.auth import users_db
+
+# Temporary placeholders for disabled resumes functionality
+resumes_db = {}
+user_resumes = {}
 
 
 @router.post("/", response_model=Dict[str, Any], status_code=status.HTTP_201_CREATED)

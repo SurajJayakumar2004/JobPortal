@@ -33,8 +33,12 @@ jobs_db: Dict[str, Job] = {}
 employer_jobs: Dict[str, List[str]] = {}  # employer_id -> [job_ids]
 
 # Import from other modules (these would be from database in production)
-from app.routers.resumes import resumes_db, user_resumes
+# from app.routers.resumes import resumes_db, user_resumes  # Temporarily disabled
 from app.routers.auth import users_db
+
+# Temporary placeholders for disabled resumes functionality
+resumes_db = {}
+user_resumes = {}
 
 # Initialize matching service
 matching_service = MatchingService()
@@ -199,8 +203,11 @@ async def list_jobs(
     # Convert to output format
     job_list = []
     for job in paginated_jobs:
+        # Use the correct ID field - Job model stores in 'id' and allows '_id' alias
+        job_id = job.id  # Access the id field directly from the Job model
+        logger.info(f"Converting job {job.title} with id: {job_id}")
         job_out = JobOut(
-            _id=job.id,
+            _id=job_id,
             employer_id=job.employer_id,
             title=job.title,
             description=job.description,
@@ -213,9 +220,11 @@ async def list_jobs(
             status=job.status,
             posted_at=job.posted_at,
             updated_at=job.updated_at,
-            applications_count=_get_applications_count(job.id)
+            applications_count=_get_applications_count(job_id)
         )
-        job_list.append(job_out.dict())
+        job_dict = job_out.dict()
+        logger.info(f"Job dict keys: {list(job_dict.keys())}, _id value: {job_dict.get('_id')}")
+        job_list.append(job_dict)
     
     return {
         "success": True,
@@ -264,9 +273,12 @@ async def get_job_details(
     
     job = jobs_db[job_id]
     
+    # Use the job ID directly from the Job model
+    job_primary_id = job.id
+    
     # Create detailed response
     job_out = JobOut(
-        _id=job.id,
+        _id=job_primary_id,
         employer_id=job.employer_id,
         title=job.title,
         description=job.description,
